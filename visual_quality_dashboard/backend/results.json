@@ -1,0 +1,138 @@
+[
+  {
+    "id": "OPY-AC594D",
+    "filename": "17fe41b7-11be-4281-af96-91e3fa69976b (1).jpg",
+    "timestamp": "2026-07-24T15:11:16.491267+00:00",
+    "prediction": "Good",
+    "confidence": 0.9139,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-6AFDFF",
+    "filename": "images (1).jpg",
+    "timestamp": "2026-07-24T15:11:16.491320+00:00",
+    "prediction": "Good",
+    "confidence": 0.9121,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-63C7A4",
+    "filename": "images (10).jpg",
+    "timestamp": "2026-07-24T15:11:16.491337+00:00",
+    "prediction": "Damaged",
+    "confidence": 0.606,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-C83504",
+    "filename": "images (11).jpg",
+    "timestamp": "2026-07-24T15:11:16.491347+00:00",
+    "prediction": "Damaged",
+    "confidence": 0.589,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-C36F6E",
+    "filename": "images (12).jpg",
+    "timestamp": "2026-07-24T15:11:16.491354+00:00",
+    "prediction": "Good",
+    "confidence": 0.6586,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-313072",
+    "filename": "images (13).jpg",
+    "timestamp": "2026-07-24T15:11:16.491361+00:00",
+    "prediction": "Good",
+    "confidence": 0.6095,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-BF2EE9",
+    "filename": "images (14).jpg",
+    "timestamp": "2026-07-24T15:11:16.491372+00:00",
+    "prediction": "Damaged",
+    "confidence": 0.6417,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-84D767",
+    "filename": "images (2).jpg",
+    "timestamp": "2026-07-24T15:11:16.491378+00:00",
+    "prediction": "Good",
+    "confidence": 0.7226,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-A4C562",
+    "filename": "images (3).jpg",
+    "timestamp": "2026-07-24T15:11:16.491385+00:00",
+    "prediction": "Damaged",
+    "confidence": 0.766,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-405DD6",
+    "filename": "images (4).jpg",
+    "timestamp": "2026-07-24T15:11:16.491391+00:00",
+    "prediction": "Damaged",
+    "confidence": 0.6518,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-6F8C95",
+    "filename": "images (5).jpg",
+    "timestamp": "2026-07-24T15:11:16.491397+00:00",
+    "prediction": "Good",
+    "confidence": 0.5607,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-008D1D",
+    "filename": "images (6).jpg",
+    "timestamp": "2026-07-24T15:11:16.491403+00:00",
+    "prediction": "Good",
+    "confidence": 0.7303,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-732FB3",
+    "filename": "images (7).jpg",
+    "timestamp": "2026-07-24T15:11:16.491411+00:00",
+    "prediction": "Good",
+    "confidence": 0.8882,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-676D3A",
+    "filename": "images (8).jpg",
+    "timestamp": "2026-07-24T15:11:16.491419+00:00",
+    "prediction": "Good",
+    "confidence": 0.9798,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-EAAF4D",
+    "filename": "images (9).jpg",
+    "timestamp": "2026-07-24T15:11:16.491425+00:00",
+    "prediction": "Damaged",
+    "confidence": 0.6094,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-EB5784",
+    "filename": "images.jpg",
+    "timestamp": "2026-07-24T15:11:16.491432+00:00",
+    "prediction": "Damaged",
+    "confidence": 0.8355,
+    "thumbnail": true
+  },
+  {
+    "id": "OPY-EC3D19",
+    "filename": "transparent-glass-circle-with-reflections_893496-1630.jpg",
+    "timestamp": "2026-07-24T15:11:16.491438+00:00",
+    "prediction": "Good",
+    "confidence": 0.7278,
+    "thumbnail": true
+  }
+]

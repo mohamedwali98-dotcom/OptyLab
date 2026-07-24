@@ -1,0 +1,229 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Optylab - Upload Imagery</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-container": "#eceef0",
+                    "error": "#ba1a1a",
+                    "background": "#f7f9fb",
+                    "on-primary": "#ffffff",
+                    "on-background": "#191c1e",
+                    "primary-fixed-dim": "#93d879",
+                    "surface-bright": "#f7f9fb",
+                    "inverse-surface": "#2d3133",
+                    "on-error-container": "#93000a",
+                    "surface-variant": "#e0e3e5",
+                    "surface-dim": "#d8dadc",
+                    "primary-container": "#43832f",
+                    "tertiary-fixed-dim": "#bdcabe",
+                    "primary-fixed": "#aef592",
+                    "on-tertiary-container": "#f6fff5",
+                    "inverse-on-surface": "#eff1f3",
+                    "on-tertiary-fixed-variant": "#3e4a41",
+                    "surface-container-highest": "#e0e3e5",
+                    "tertiary-container": "#6b786e",
+                    "error-container": "#ffdad6",
+                    "on-tertiary-fixed": "#131e17",
+                    "surface-container-high": "#e6e8ea",
+                    "on-tertiary": "#ffffff",
+                    "on-error": "#ffffff",
+                    "on-secondary-container": "#636467",
+                    "on-primary-fixed": "#042100",
+                    "inverse-primary": "#93d879",
+                    "primary": "#2a6918",
+                    "tertiary-fixed": "#d9e6da",
+                    "on-primary-container": "#f8ffef",
+                    "outline-variant": "#c1c9b8",
+                    "on-primary-fixed-variant": "#125300",
+                    "tertiary": "#535f56",
+                    "on-secondary-fixed-variant": "#454749",
+                    "secondary": "#5d5e61",
+                    "surface-container-lowest": "#ffffff",
+                    "on-surface": "#191c1e",
+                    "outline": "#717a6b",
+                    "on-secondary-fixed": "#1a1c1e",
+                    "surface": "#f7f9fb",
+                    "secondary-fixed-dim": "#c6c6c9",
+                    "on-surface-variant": "#41493c",
+                    "surface-container-low": "#f2f4f6",
+                    "on-secondary": "#ffffff",
+                    "secondary-container": "#e2e2e5",
+                    "surface-tint": "#2d6c1a",
+                    "secondary-fixed": "#e2e2e5"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "xs": "4px",
+                    "xl": "40px",
+                    "base": "8px",
+                    "sm": "12px",
+                    "gutter": "24px",
+                    "md": "16px",
+                    "margin": "32px",
+                    "lg": "24px"
+            },
+            "fontFamily": {
+                    "headline-sm": ["Hanken Grotesk"],
+                    "body-lg": ["Inter"],
+                    "label-sm": ["Inter"],
+                    "display-lg": ["Hanken Grotesk"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "headline-lg": ["Hanken Grotesk"],
+                    "body-sm": ["Inter"],
+                    "label-md": ["Inter"],
+                    "body-md": ["Inter"]
+            },
+            "fontSize": {
+                    "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "label-sm": ["11px", {"lineHeight": "14px", "fontWeight": "500"}],
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
+                    "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+            }
+          }
+        }
+      }
+    </script>
+</head>
+<body class="bg-background text-on-background min-h-screen flex flex-col font-body-md text-body-md">
+<!-- TopNavBar -->
+<nav class="bg-surface-container-lowest dark:bg-surface-container-lowest w-full top-0 sticky shadow-sm dark:shadow-none z-50">
+<div class="flex justify-between items-center h-16 px-gutter max-w-full mx-auto">
+<!-- Brand -->
+<div class="flex items-center gap-4">
+<img src="https://lh3.googleusercontent.com/aida-public/AB6AXuA5Oy1uZrGc-3lrWxiE00vAqLq0ioa1XoTpI_93qwdgFYxIhu5Z46MqAezeZIy7B6MmiomQQZ03BojhqprfCRp9U36M4UAvt_PVxbRY9_vLwaak7cDRMpJDkhrkCwmpN807UXFehfWZYi925fF0gfo_9JgP3CsyfhfFy3WYScGHrKiBJreEqaUlwbfBo0ClGS3z7v5iNI4UGKO6NFyO6w5152kRLwv8UUD9f9JL5jGoSIREPZZg4Bw8zujVKWCML188ODlW6I2XIfIj" alt="Optylab Logo" class="h-10 w-auto object-contain">
+</div>
+<!-- Navigation Links (Desktop) -->
+<div class="hidden md:flex gap-gutter items-end h-full">
+<a class="text-primary dark:text-primary-fixed-dim border-b-2 border-primary dark:border-primary-fixed-dim pb-1 font-bold h-full flex items-end" href="#">
+<span class="font-label-md text-label-md mb-4">Upload</span>
+</a>
+<a class="text-secondary dark:text-secondary-fixed-dim hover:text-primary dark:hover:text-primary-fixed-dim transition-colors h-full flex items-end pb-1 border-b-2 border-transparent" href="#">
+<span class="font-label-md text-label-md mb-4">Results</span>
+</a>
+<a class="text-secondary dark:text-secondary-fixed-dim hover:text-primary dark:hover:text-primary-fixed-dim transition-colors h-full flex items-end pb-1 border-b-2 border-transparent" href="#">
+<span class="font-label-md text-label-md mb-4">Admin</span>
+</a>
+</div>
+<!-- Trailing Actions -->
+<div class="flex items-center gap-sm">
+<button class="hover:bg-surface-container-low dark:hover:bg-surface-container-high rounded-lg transition-all cursor-pointer active:opacity-80 p-2 text-primary dark:text-primary-fixed-dim">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="hover:bg-surface-container-low dark:hover:bg-surface-container-high rounded-lg transition-all cursor-pointer active:opacity-80 p-2 text-primary dark:text-primary-fixed-dim">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant ml-2 flex-shrink-0 cursor-pointer">
+<img alt="Medical Practitioner Profile" class="w-full h-full object-cover" data-alt="A professional headshot of a medical practitioner in a clean, brightly lit laboratory setting. The lighting is soft and flattering, emphasizing a sterile yet approachable modern medical aesthetic with subtle green undertones." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDihHPnW_UG-V0e7JPrJNeJE0Y0ceZsvTJnLROY0JTgZNdxjUm6v2AzFq_c_QbU7ExHY-eIB0uOT3Bn5_rzaEOY7sbH5dqMbFIGaO9g3uwM9unWLaqF1ORfdhJVp3OyVRESTVOkfNi8UvPLyGDg8UoSSMD0TGlZR6411TODZV8crrhBFyEx55FMZBTBD-yYIDWQrVJoj576UDnRRZXiN_Xxym_zlFfquGJNaTZ-9Qi_7lFkdymkvkM0ffMlbc_gr5EE50nBCtqidMeP">
+</div>
+</div>
+</div>
+</nav>
+<!-- Main Content -->
+<main class="flex-grow flex flex-col md:flex-row px-gutter py-margin gap-gutter max-w-[1440px] mx-auto w-full">
+<!-- Left Column: Upload Area -->
+<section class="flex-grow flex flex-col gap-gutter w-full md:w-2/3">
+<header class="mb-sm">
+<h1 class="font-headline-md text-headline-md text-on-surface">Upload Imagery</h1>
+<p class="font-body-md text-body-md text-secondary mt-2">Transfer high-resolution scans for automated diagnostic analysis.</p>
+</header>
+<!-- Single File Drag & Drop -->
+<div class="border border-outline-variant border-dashed rounded-xl bg-surface p-xl flex flex-col items-center justify-center text-center cursor-pointer hover:bg-surface-container-low transition-colors min-h-[320px] relative group overflow-hidden">
+<div class="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+<div class="w-16 h-16 rounded-full bg-primary-container/20 flex items-center justify-center mb-md group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-[32px] text-primary" style="font-variation-settings: 'FILL' 1;">cloud_upload</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-xs">Drag &amp; drop single scan</h3>
+<p class="font-body-sm text-body-sm text-secondary mb-md">Supports DICOM, TIFF, and PNG up to 500MB</p>
+<button class="bg-primary text-on-primary font-label-md text-label-md px-md py-sm rounded-DEFAULT hover:bg-surface-tint transition-colors cursor-pointer active:opacity-80">
+                    Browse Files
+                </button>
+</div>
+<!-- Batch Folder Upload -->
+<div class="border border-outline-variant rounded-lg bg-surface-container-lowest p-md flex items-center justify-between shadow-sm">
+<div class="flex items-center gap-md">
+<div class="w-12 h-12 rounded-lg bg-surface-container flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary">folder_zip</span>
+</div>
+<div>
+<h4 class="font-headline-sm text-headline-sm text-on-surface">Batch Upload</h4>
+<p class="font-body-sm text-body-sm text-secondary">Upload a compressed directory of patient scans</p>
+</div>
+</div>
+<button class="border border-primary text-primary font-label-md text-label-md px-md py-sm rounded-DEFAULT hover:bg-surface-container-low transition-colors cursor-pointer active:opacity-80 flex items-center gap-xs">
+<span class="material-symbols-outlined text-[18px]">upload</span>
+                    Select Folder
+                </button>
+</div>
+<!-- Upload Queue (Empty State) -->
+<div class="mt-md">
+<h4 class="font-label-md text-label-md text-secondary uppercase tracking-wider mb-sm">Transfer Queue</h4>
+<div class="border border-outline-variant rounded-lg bg-surface-container-lowest p-xl text-center text-secondary font-body-sm text-body-sm">
+                    No active transfers. Ready for upload.
+                </div>
+</div>
+</section>
+<!-- Right Column: Guidelines Sidebar -->
+<aside class="w-full md:w-1/3 flex flex-col gap-md">
+<div class="bg-surface-container-lowest rounded-lg border border-outline-variant p-md shadow-sm">
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-md flex items-center gap-xs border-b border-surface-variant pb-sm">
+<span class="material-symbols-outlined text-primary">rule</span>
+                    Analysis Guidelines
+                </h3>
+<ul class="flex flex-col gap-sm">
+<li class="flex items-start gap-sm">
+<span class="material-symbols-outlined text-primary text-[20px] mt-1">check_circle</span>
+<div>
+<span class="font-label-md text-label-md text-on-surface block">Resolution Requirements</span>
+<span class="font-body-sm text-body-sm text-secondary">Minimum 300 DPI required for accurate cell-level segmentation.</span>
+</div>
+</li>
+<li class="flex items-start gap-sm">
+<span class="material-symbols-outlined text-primary text-[20px] mt-1">check_circle</span>
+<div>
+<span class="font-label-md text-label-md text-on-surface block">Anonymization</span>
+<span class="font-body-sm text-body-sm text-secondary">Ensure all metadata (PHI) is stripped before uploading raw formats.</span>
+</div>
+</li>
+<li class="flex items-start gap-sm">
+<span class="material-symbols-outlined text-error text-[20px] mt-1">warning</span>
+<div>
+<span class="font-label-md text-label-md text-on-surface block">Supported Artifacts</span>
+<span class="font-body-sm text-body-sm text-secondary">Images with heavy contrast artifacts may yield false positives.</span>
+</div>
+</li>
+</ul>
+</div>
+<!-- System Status -->
+<div class="bg-primary-container/10 rounded-lg border border-primary/20 p-md">
+<div class="flex items-center gap-sm mb-xs">
+<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+<span class="font-label-md text-label-md text-primary-container">Processing Engine Online</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                    Current estimated analysis time is <strong class="font-semibold">~45 seconds</strong> per standard scan.
+                </p>
+</div>
+</aside>
+</main>
+
+
+</body></html>
