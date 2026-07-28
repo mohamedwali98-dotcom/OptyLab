@@ -8,17 +8,23 @@ DIRS = [
     (os.path.join(BASE_DIR, "RawImagesGood"), os.path.join(BASE_DIR, "Good")),
     (os.path.join(BASE_DIR, "RawImagesDamaged"), os.path.join(BASE_DIR, "Damaged"))
 ]
-AUGS_PER_IMAGE = 5   # how many augmented variants to generate per original photo
+AUGS_PER_IMAGE = 8   # how many augmented variants to generate per original photo
 # -------------------------------------------------------------------------
 
-# Filters applied to each image. Add/remove/adjust as you like.
-transform = A.Compose([
+# Full set of filters applied to 6 of the images
+transform_full = A.Compose([
     A.Resize(224, 224),
     A.HorizontalFlip(p=0.5),
     A.Rotate(limit=15, p=0.5),
     A.RandomBrightnessContrast(p=0.4),
     A.GaussianBlur(blur_limit=(3, 5), p=0.3),
     A.GaussNoise(std_range=(0.01, 0.05), p=0.3),
+])
+
+# Rotation-only filters applied to the other 2 images
+transform_rotate = A.Compose([
+    A.Resize(224, 224),
+    A.Rotate(limit=15, p=1.0),
 ])
 
 VALID_EXTENSIONS = (".jpg", ".jpeg", ".png", ".bmp")
@@ -43,7 +49,10 @@ def main():
 
             name, ext = os.path.splitext(fname)
             for i in range(AUGS_PER_IMAGE):
-                augmented = transform(image=image)["image"]
+                if i < 6:
+                    augmented = transform_full(image=image)["image"]
+                else:
+                    augmented = transform_rotate(image=image)["image"]
                 augmented_bgr = cv2.cvtColor(augmented, cv2.COLOR_RGB2BGR)
                 out_name = f"{name}_aug{i + 1}{ext}"
                 out_path = os.path.join(output_dir, out_name)

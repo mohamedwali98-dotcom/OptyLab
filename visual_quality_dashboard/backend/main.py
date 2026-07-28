@@ -18,8 +18,9 @@ from typing import List
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
-from classifier import train_and_evaluate, load_model, classify_image, STATS_PATH, MODEL_PATH
+from classifier import train_and_evaluate, load_model, classify_image, STATS_PATH, MODEL_PATH, GOOD_DIR, DAMAGED_DIR
 
 # ── App setup ────────────────────────────────────────────────────────────────
 app = FastAPI(title="OptyLab API", version="1.0")
@@ -206,3 +207,77 @@ def model_stats():
     if not STATS_PATH.exists():
         raise HTTPException(status_code=404, detail="No stats found. Train the model first.")
     return json.loads(STATS_PATH.read_text())
+
+
+class CorrectionRequest(BaseModel):
+    filename: str
+    corrected_label: str
+
+
+@app.post("/correct-prediction")
+def correct_prediction(req: CorrectionRequest):
+    """
+    Correct a wrong classification:
+    1. Copy the image from UPLOADS_DIR to DB/Good or DB/Damaged depending on the corrected label.
+    2. Update its prediction in results.json.
+    """
+    # 1. Verify file exists
+    src_file = UPLOADS_DIR / req.filename
+    if not src_file.exists():
+        raise HTTPException(status_code=404, detail="Original uploaded file not found.")
+
+    # 2. Get destination directory
+    if req.corrected_label == "Good":
+        dest_dir = GOOD_DIR
+    elif req.corrected_label == "Damaged":
+        dest_dir = DAMAGED_DIR
+    else:
+        raise HTTPException(status_code=400, detail="Invalid corrected label. Must be 'Good' or 'Damaged'.")
+
+    # Ensure destination directory exists
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_file = dest_dir / req.filename
+
+    # Copy the file to DB folder
+    try:
+        shutil.copy2(src_file, dest_file)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to copy file to DB: {str(e)}")
+
+    # 3. Update results.json
+    results = read_results()
+    updated = False
+    for r in results:
+        if r["filename"] == req.filename:
+            r["prediction"] = req.corrected_label
+            r["confidence"] = 1.0  # Mark as 100% confidence/verified
+            r["corrected"] = True  # Custom field to indicate override
+            updated = True
+            break
+    
+    if not updated:
+        # If not found in results, create a new entry
+        entry = {
+            "id": f"OPY-{uuid.uuid4().hex[:6].upper()}",
+            "filename": req.filename,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "prediction": req.corrected_label,
+            "confidence": 1.0,
+            "thumbnail": True,
+            "corrected": True
+        }
+        results.append(entry)
+    
+    write_results(results)
+    return {"message": f"Successfully corrected {req.filename} to {req.corrected_label}"}
+
+
+@app.get("/upload-stats")
+def get_upload_stats():
+    """Return count of uploaded files and stats details."""
+    files = [f for f in UPLOADS_DIR.iterdir() if f.is_file() and f.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp"}]
+    results = read_results()
+    return {
+        "total_uploaded": len(files),
+        "total_classified": len(results)
+    }
