@@ -53,3 +53,11 @@ lerna-debug.log*
 *.sln
 *.sw?
 *.zip
+
+# Local environment / secrets
+.env
+.jwt_secret
+*.db
+uploads/
+results.json
+

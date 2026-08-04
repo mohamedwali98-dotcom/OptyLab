@@ -30,12 +30,13 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from classifier import train_and_evaluate, load_models, classify_image
-from classifier_utils import STATS_PATH, MODEL_DIR, GOOD_DIR, DAMAGED_DIR
+from classifier_utils import STATS_PATH, MODEL_DIR, GOOD_DIR, DAMAGED_DIR, HEATMAPS_DIR
 import auth
 from auth import (  # noqa: F401  (re-exported names referenced by endpoints)
     init_db, create_user, authenticate, get_user_by_id, change_password,
     is_admin_allowed, list_admin_access, grant_admin_access,
     revoke_admin_access, record_login, get_history, current_user,
+    record_process, get_processed,
     client_ip, normalize_email,
 )
 
@@ -55,6 +56,7 @@ BASE_DIR     = Path(__file__).parent
 UPLOADS_DIR  = BASE_DIR / "uploads"
 RESULTS_FILE = BASE_DIR / "results.json"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+HEATMAPS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── Auth bootstrap ─────────────────────────────────────────────────────────────
 # Create the auth DB / tables and seed the initial admin(s) if none exist yet.
@@ -178,6 +180,12 @@ def history(user: dict = Depends(require_user)):
     return {"history": get_history(user["id"], limit=20)}
 
 
+@app.get("/auth/processed")
+def processed(user: dict = Depends(require_user)):
+    """Last 20 images processed (classified) by the current user."""
+    return {"processed": get_processed(user["id"], limit=20)}
+
+
 @app.get("/auth/admin-access")
 def get_access(user: dict = Depends(require_admin_access)):
     """List every email allowed to view the Admin tab (the 'sheet')."""
@@ -238,7 +246,11 @@ def get_queue():
     pending = [
         {"filename": f.name, "status": "classified" if f.name in classified else "queued"}
         for f in sorted(UPLOADS_DIR.iterdir())
-        if f.is_file() and f.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp"}
+        if f.is_file()
+        and f.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp"}
+        # Damage-localization overlays (`<stem>__heatmap.png`) are NOT queue
+        # items — they belong in the separate heatmaps/ folder, so exclude them.
+        and not f.name.endswith("__heatmap.png")
     ]
     return {"queue": pending}
 
@@ -336,20 +348,31 @@ def _mock_classify(img_path: Path) -> dict:
 
 
 @app.post("/classify")
-def classify_all():
+def classify_all(request: Request):
     """
     Run classification on every uploaded image and store results.
     - If a trained model exists  → uses HOG+SVM (real predictions).
     - If no model is trained yet → falls back to random mock labels so
       newly uploaded images always appear in the Results tab.
+
+    If the caller is authenticated, each newly-classified image is recorded
+    under that user's account so they can review their own processing history.
     """
     VALID = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif"}
-    files = [f for f in UPLOADS_DIR.iterdir() if f.is_file() and f.suffix.lower() in VALID]
+    files = [
+        f for f in UPLOADS_DIR.iterdir()
+        if f.is_file() and f.suffix.lower() in VALID
+        and not f.name.endswith("__heatmap.png")
+    ]
 
     if not files:
         raise HTTPException(status_code=400, detail="No uploaded images to classify.")
 
     use_model = load_models()
+    # Optional attribution: the user who triggered the run (None if anon).
+    actor = current_user(request)
+    actor_id = actor["id"] if actor else None
+    actor_email = actor["email"] if actor else None
 
     existing = {r["filename"]: r for r in read_results()}
 
@@ -358,11 +381,11 @@ def classify_all():
         if img_path.name in existing:
             new_results.append(existing[img_path.name])
             continue
-            
+
         group_id = None
         if "___" in img_path.name:
             group_id = img_path.name.split("___", 1)[0]
-            
+
         result = classify_image(img_path) if use_model else _mock_classify(img_path)
         entry = {
             "id":         f"OPY-{uuid.uuid4().hex[:6].upper()}",
@@ -373,8 +396,17 @@ def classify_all():
             "models": result.get("models", {}),
             "thumbnail":  True,
             "group_id":   group_id,
+            "heatmap": result.get("heatmap"),
         }
         new_results.append(entry)
+
+        # Attribute the freshly-processed image to the logged-in user.
+        if actor_id is not None:
+            record_process(
+                actor_id, actor_email,
+                img_path.name, result["prediction"], result["confidence"],
+                datetime.now(timezone.utc).isoformat(),
+            )
 
     write_results(new_results)
     mode = "model" if use_model else "mock (no trained model)"
@@ -415,14 +447,39 @@ def get_thumbnail(filename: str):
     return FileResponse(str(path))
 
 
+@app.get("/heatmap/{filename}")
+def get_heatmap(filename: str):
+    """Serve the Grad-CAM damage-localization overlay for an uploaded image.
+
+    The overlay is generated at classify time and stored as
+    `<stem>__heatmap.png` next to the original upload. If it doesn't exist
+    (e.g. image was classified as Good, or model unavailable) we 404 so the
+    frontend can gracefully fall back to the plain image.
+    """
+    safe = Path(filename).name
+    stem = Path(safe).stem
+    heat_path = HEATMAPS_DIR / f"{stem}__heatmap.png"
+    if not heat_path.exists():
+        raise HTTPException(status_code=404, detail="No damage overlay available")
+    return FileResponse(str(heat_path))
+
+
 @app.delete("/clear-uploads")
-def clear_uploads(user: dict = Depends(require_admin_access)):
-    """Delete all files in the uploads folder and reset the results cache."""
+def clear_uploads(user: dict = Depends(require_user)):
+    """Delete all files in the uploads folder, the heatmaps folder, and reset the results cache."""
     deleted = 0
     for f in UPLOADS_DIR.iterdir():
         if f.is_file():
             f.unlink()
             deleted += 1
+    # Also clear damage-localization overlays (they live in their own folder).
+    if HEATMAPS_DIR.exists():
+        for f in HEATMAPS_DIR.iterdir():
+            if f.is_file() and f.name.endswith("__heatmap.png"):
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
     # Also clear results so they don't reference deleted files
     write_results([])
     return {"message": f"Cleared {deleted} file(s) from the upload queue."}
@@ -435,15 +492,25 @@ def delete_upload(filename: str):
     path = UPLOADS_DIR / safe
     if not path.exists():
         raise HTTPException(status_code=404, detail="File not found")
-    
+
     path.unlink()
-    
+
+    # Also remove the associated Grad-CAM damage overlay (if any) so it
+    # doesn't linger after the source image is gone. Overlays live in the
+    # dedicated heatmaps/ folder, not inside uploads/.
+    heatmap = HEATMAPS_DIR / f"{path.stem}__heatmap.png"
+    if heatmap.exists():
+        try:
+            heatmap.unlink()
+        except OSError:
+            pass
+
     # Also remove it from results.json if it was classified
     results = read_results()
     new_results = [r for r in results if r["filename"] != safe]
     if len(results) != len(new_results):
         write_results(new_results)
-        
+
     return {"message": f"Deleted {safe}"}
 
 

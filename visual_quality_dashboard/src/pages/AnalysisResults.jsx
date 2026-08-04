@@ -12,6 +12,7 @@ const AnalysisResults = () => {
   const [sortKey, setSortKey]       = useState(null);   // column key to sort by
   const [sortDir, setSortDir]       = useState('asc');  // 'asc' | 'desc'
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showHeat, setShowHeat] = useState(false);   // damage overlay toggle in lightbox
   const tableContainerRef = useRef(null);
 
   const groupedResults = React.useMemo(() => {
@@ -92,6 +93,22 @@ const AnalysisResults = () => {
     );
   };
 
+  const deleteResult = async (filename) => {
+    if (!window.confirm(`Delete "${filename}"? This removes the image from the upload folder.`)) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/upload/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      if (res.ok) {
+        setLightbox(null);
+        await fetchResults();
+        addNotification('info', `Deleted ${filename}`);
+      } else {
+        addNotification('error', 'Failed to delete image.');
+      }
+    } catch {
+      addNotification('error', 'Cannot connect to backend.');
+    }
+  };
+
   const fetchResults = async () => {
     try {
       const res = await fetch(`${BACKEND_URL}/results`);
@@ -133,6 +150,10 @@ const AnalysisResults = () => {
     if (lightbox) {
       document.addEventListener('keydown', handleKeyDown);
       document.body.style.overflow = 'hidden';
+      // Default to the PLAIN image. The damage-localization overlay is opt-in
+      // via the "Show damage" toggle, so the default picture is never the
+      // heatmap/circle view.
+      setShowHeat(false);
     } else {
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = '';
@@ -227,7 +248,13 @@ const AnalysisResults = () => {
             }}
           >
             <img
-              src={`${BACKEND_URL}/thumbnail/${lightbox.group.items[lightbox.currentIndex].filename}`}
+              src={
+                (() => {
+                  const it = lightbox.group.items[lightbox.currentIndex];
+                  if (showHeat && it.heatmap) return `${BACKEND_URL}/heatmap/${it.filename}`;
+                  return `${BACKEND_URL}/thumbnail/${it.filename}`;
+                })()
+              }
               alt={lightbox.group.items[lightbox.currentIndex].filename}
               style={{
                 maxWidth: '70vw',
@@ -244,11 +271,45 @@ const AnalysisResults = () => {
                 </span>
                 {stateBadge(lightbox.group.items[lightbox.currentIndex].prediction)}
               </div>
-              {lightbox.group.items.length > 1 && (
-                <span className="font-label-sm text-secondary bg-surface-variant px-2 py-0.5 rounded">
-                  Perspective {lightbox.currentIndex + 1} of {lightbox.group.items.length}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {lightbox.group.items[lightbox.currentIndex].heatmap ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowHeat(v => !v)}
+                    title="Toggle damage localization overlay"
+                    className="flex items-center gap-xs px-sm py-xs rounded-full text-[12px] font-label-sm cursor-pointer transition-colors"
+                    style={{
+                      border: '1px solid var(--color-outline-variant, #ccc)',
+                      color: showHeat ? 'var(--color-on-error-container, #fff)' : 'var(--color-error, #d32f2f)',
+                      background: showHeat ? 'var(--color-error, #d32f2f)' : 'transparent',
+                    }}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">local_fire_department</span>
+                    {showHeat ? 'Hide damage' : 'Show damage'}
+                  </button>
+                ) : (
+                  <span className="font-label-sm text-[11px] text-secondary opacity-70">No damage overlay</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => deleteResult(lightbox.group.items[lightbox.currentIndex].filename)}
+                  title="Delete this image"
+                  className="flex items-center gap-xs px-sm py-xs rounded-full text-[12px] font-label-sm cursor-pointer transition-colors"
+                  style={{
+                    border: '1px solid var(--color-outline-variant, #ccc)',
+                    color: 'var(--color-error, #d32f2f)',
+                    background: 'transparent',
+                  }}
+                >
+                  <span className="material-symbols-outlined text-[16px]">delete</span>
+                  Delete
+                </button>
+                {lightbox.group.items.length > 1 && (
+                  <span className="font-label-sm text-secondary bg-surface-variant px-2 py-0.5 rounded">
+                    Perspective {lightbox.currentIndex + 1} of {lightbox.group.items.length}
+                  </span>
+                )}
+              </div>
             </div>
             <p style={{ fontSize: '11px', opacity: 0.45, margin: 0 }}>
               Click outside or press Esc to close
@@ -386,6 +447,12 @@ const AnalysisResults = () => {
                               src={`${BACKEND_URL}/thumbnail/${group.items[0].filename}`}
                               alt={group.items[0].filename}
                             />
+                            {group.items[0].heatmap && (
+                              <div className="absolute top-0 left-0 bg-error text-on-error-container text-[10px] font-bold px-1 rounded-br-md flex items-center gap-0.5">
+                                <span className="material-symbols-outlined text-[12px]">local_fire_department</span>
+                                damage
+                              </div>
+                            )}
                             {group.items.length > 1 && (
                               <div className="absolute bottom-0 right-0 bg-black/60 text-white text-[10px] px-1 font-bold rounded-tl-md">
                                 {group.items.length}

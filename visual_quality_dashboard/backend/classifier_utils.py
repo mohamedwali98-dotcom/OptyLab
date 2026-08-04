@@ -14,6 +14,9 @@ GOOD_DIR    = DB_DIR / "Good"
 DAMAGED_DIR = DB_DIR / "Damaged"
 MODEL_DIR   = BASE_DIR / "model"
 STATS_PATH  = MODEL_DIR / "stats.json"
+# Damage-localization overlays live in their own folder, a sibling of `uploads/`.
+# Keeping them out of `uploads/` stops them from showing up in the transfer queue.
+HEATMAPS_DIR = BASE_DIR / "heatmaps"
 
 DEVICE      = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

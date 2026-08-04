@@ -1,32 +1,16 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 
 const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const UploadImagery = () => {
-  const { addNotification } = useApp();
+  const { addNotification, queue, setQueue } = useApp();
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
-  const [queue, setQueue] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
 
-  useEffect(() => {
-    // Load existing queue from backend on mount
-    fetch(`${BACKEND_URL}/queue`)
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.queue) {
-          const loadedQueue = data.queue.map(f => ({
-            id: `${f.filename}-${Date.now()}`,
-            name: f.filename,
-            size: 0, // Size isn't returned by backend queue endpoint
-            status: f.status
-          }));
-          setQueue(loadedQueue);
-        }
-      })
-      .catch(err => console.error('Failed to load queue:', err));
-  }, []);
+  // The queue lives in AppContext so it persists across page navigation
+  // (Upload <-> Results) and is only cleared on sign-out / sign-in.
 
   const addFilesToQueue = async (files, isMultiPerspective = false) => {
     const validExts = ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif'];
@@ -102,10 +86,20 @@ const UploadImagery = () => {
   const handleDragLeave = () => setIsDragging(false);
 
   const clearQueue = async () => {
+    const confirmed = window.confirm('Clear the entire transfer queue? This removes all uploaded images and heatmaps.');
+    if (!confirmed) return;
     try {
-      await fetch(`${BACKEND_URL}/clear-uploads`, { method: 'DELETE' });
-      setQueue([]);
-      addNotification('info', 'Queue cleared.');
+      const token = localStorage.getItem('optylab-token');
+      const res = await fetch(`${BACKEND_URL}/clear-uploads`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        setQueue([]);
+        addNotification('info', 'Queue cleared.');
+      } else {
+        addNotification('error', 'Failed to clear the queue (you must be signed in).');
+      }
     } catch {
       alert('Cannot connect to backend to clear queue.');
     }

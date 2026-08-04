@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { api, getToken, setToken, clearToken } from '../api';
 
 const AppContext = createContext(null);
@@ -24,9 +24,19 @@ export const AppProvider = ({ children }) => {
   const [authLoading, setAuthLoading] = useState(true);
   // Full-screen sign-in modal: { open, mode: 'login' | 'register' }
   const [authModal, setAuthModal]   = useState({ open: false, mode: 'login' });
+  // Account hub modal (opened from the top-nav account button): a window with
+  // two choices — change password / recent activity — instead of a page tab.
+  const [accountOpen, setAccountOpen] = useState(false);
+
+  // Transfer queue (Upload page). Held here — not inside the Upload page — so it
+  // survives navigation between pages (Upload <-> Results) without being wiped
+  // on remount. It is reset only when the signed-in identity changes.
+  const [queue, setQueue] = useState([]);
 
   const openAuth   = useCallback((mode = 'login') => setAuthModal({ open: true, mode }), []);
-  const closeAuth  = useCallback(() => setAuthModal(m => ({ ...m, open: false })), []);
+  const closeAuth  = useCallback(() => setAuthModal({ open: false, mode: 'login' }), []);
+  const openAccount  = useCallback(() => setAccountOpen(true), []);
+  const closeAccount = useCallback(() => setAccountOpen(false), []);
 
   const applySession = useCallback((payload) => {
     setUser(payload.user);
@@ -52,6 +62,10 @@ export const AppProvider = ({ children }) => {
     clearToken();
     setUser(null);
     setAdminAccess(false);
+    // Reset transient UI state so the next sign-in starts from a clean slate
+    // (no leftover modal/account windows or stale auth-modal fields).
+    setAuthModal({ open: false, mode: 'login' });
+    setAccountOpen(false);
   }, []);
 
   // On mount, restore a session from a stored token (if still valid).
@@ -65,6 +79,17 @@ export const AppProvider = ({ children }) => {
       .finally(() => { if (!cancelled) setAuthLoading(false); });
     return () => { cancelled = true; };
   }, []);
+
+  // Clear the transfer queue when the signed-in identity changes (sign-out /
+  // sign-in to a different account). This does NOT fire on plain navigation
+  // between pages, so uploaded files stay visible when switching Upload<->Results.
+  const prevUserId = useRef(user?.id);
+  useEffect(() => {
+    if (prevUserId.current !== user?.id) {
+      prevUserId.current = user?.id;
+      setQueue([]);
+    }
+  }, [user?.id]);
 
   // Dark mode
   useEffect(() => {
@@ -113,6 +138,8 @@ export const AppProvider = ({ children }) => {
       darkMode, toggleDarkMode,
       settings, updateSetting,
       user, adminAccess, authLoading, signIn, signUp, signOut, openAuth, closeAuth, authModal,
+      accountOpen, openAccount, closeAccount,
+      queue, setQueue,
     }}>
       {children}
     </AppContext.Provider>

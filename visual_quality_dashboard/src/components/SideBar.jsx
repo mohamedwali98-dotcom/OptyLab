@@ -178,11 +178,6 @@ const SideBar = () => {
         );
       })}
 
-      {/* ── Account (only when logged in) ──────────────────────────── */}
-      {user && (
-        <NavLinkStyled to="/account" label="Account" icon="account_circle" active={isActive('/account')} />
-      )}
-
       {/* ── Admin tab: red, only for users with admin access ──────── */}
       {user && adminAccess && (
         <Link
@@ -226,6 +221,14 @@ const SideBar = () => {
       )}
 
       <div style={{ flex: 1 }} /> {/* Spacer to push settings to the bottom */}
+
+      {/* ── Thin gray separator between the upper nav and the
+            settings group ─────────────────────────────────── */}
+      <div style={{
+        height: '1px',
+        background: 'var(--color-surface-variant, #e0e0e0)',
+        margin: '4px 8px 8px',
+      }} />
 
       {/* ── Settings button ───────────────────────────────────────────── */}
       <div ref={settingsRef} style={{ position: 'relative' }}>

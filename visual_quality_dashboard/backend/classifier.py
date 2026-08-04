@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from sklearn.metrics import precision_score, recall_score, f1_score
 
-from classifier_utils import load_image_paths, STATS_PATH
+from classifier_utils import load_image_paths, STATS_PATH, HEATMAPS_DIR
 from classifier_svm import train_svm, load_svm, predict_svm
 from classifier_cnn import train_cnn, load_cnn, predict_cnn
 from classifier_vit import train_vit, load_vit, predict_vit
@@ -80,12 +80,32 @@ def classify_image(img_path: Path):
     
     final_conf = (conf_svm + conf_cnn + conf_vit) / 3.0
 
-    return {
+    result = {
         "prediction": final_pred,
         "confidence": final_conf,
         "models": {
             "svm": {"prediction": pred_svm, "confidence": conf_svm},
             "cnn": {"prediction": pred_cnn, "confidence": conf_cnn},
             "vit": {"prediction": pred_vit, "confidence": conf_vit},
-        }
+        },
     }
+
+    # ── Damage localization (Grad-CAM) ───────────────────────────────────────
+    # Only meaningful when the lens is flagged Damaged: highlight the region the
+    # CNN used to decide "Damaged" so the operator can see the defect at a glance.
+    if final_pred == "Damaged":
+        try:
+            from gradcam import generate_damage_overlay
+            overlay = generate_damage_overlay(
+                _models_cache["cnn"], img_path, predicted_class=1
+            )
+            if overlay is not None:
+                HEATMAPS_DIR.mkdir(parents=True, exist_ok=True)
+                heat_name = f"{img_path.stem}__heatmap.png"
+                heat_path = HEATMAPS_DIR / heat_name
+                overlay.save(heat_path)
+                result["heatmap"] = heat_name
+        except Exception as e:
+            print(f"[WARN] damage overlay skipped for {img_path.name}: {e}")
+
+    return result

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-
-const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { BACKEND_URL } from '../backend';
 
 const AnalysisAdmin = () => {
   const [stats, setStats] = useState(null);
@@ -16,6 +15,7 @@ const AnalysisAdmin = () => {
   const [sortKey, setSortKey]   = useState(null);
   const [sortDir, setSortDir]   = useState('asc');
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showHeat, setShowHeat] = useState(false);   // damage overlay toggle in lightbox
   const tableContainerRef = useRef(null);
 
   useEffect(() => {
@@ -33,6 +33,10 @@ const AnalysisAdmin = () => {
     if (lightbox) {
       document.addEventListener('keydown', handleKeyDown);
       document.body.style.overflow = 'hidden';
+      // Default to the PLAIN image. The damage-localization overlay is opt-in
+      // via the "Show damage" toggle, so the default picture is never the
+      // heatmap/circle view.
+      setShowHeat(false);
     } else {
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = '';
@@ -106,6 +110,22 @@ const AnalysisAdmin = () => {
   const SortIcon = ({ colKey }) => {
     if (sortKey !== colKey) return <span className="material-symbols-outlined text-[13px] opacity-25 ml-0.5 align-middle">unfold_more</span>;
     return <span className="material-symbols-outlined text-[13px] text-primary ml-0.5 align-middle">{sortDir === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>;
+  };
+
+  const deleteResult = async (filename) => {
+    if (!window.confirm(`Delete "${filename}"? This removes the image from the upload folder.`)) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/upload/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      if (res.ok) {
+        setLightbox(null);
+        await fetchResults();
+        addNotification('info', `Deleted ${filename}`);
+      } else {
+        addNotification('error', 'Failed to delete image.');
+      }
+    } catch {
+      addNotification('error', 'Cannot connect to backend.');
+    }
   };
 
   const fetchStats = async () => {
@@ -276,7 +296,13 @@ const AnalysisAdmin = () => {
             }}
           >
             <img
-              src={`${BACKEND_URL}/thumbnail/${lightbox.group.items[lightbox.currentIndex].filename}`}
+              src={
+                (() => {
+                  const it = lightbox.group.items[lightbox.currentIndex];
+                  if (showHeat && it.heatmap) return `${BACKEND_URL}/heatmap/${it.filename}`;
+                  return `${BACKEND_URL}/thumbnail/${it.filename}`;
+                })()
+              }
               alt={lightbox.group.items[lightbox.currentIndex].filename}
               style={{
                 maxWidth: '70vw',
@@ -293,11 +319,45 @@ const AnalysisAdmin = () => {
                 </span>
                 {stateBadge(lightbox.group.items[lightbox.currentIndex].prediction, lightbox.group.items[lightbox.currentIndex].corrected)}
               </div>
-              {lightbox.group.items.length > 1 && (
-                <span className="font-label-sm text-secondary bg-surface-variant px-2 py-0.5 rounded">
-                  Perspective {lightbox.currentIndex + 1} of {lightbox.group.items.length}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {lightbox.group.items[lightbox.currentIndex].heatmap ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowHeat(v => !v)}
+                    title="Toggle damage localization overlay"
+                    className="flex items-center gap-xs px-sm py-xs rounded-full text-[12px] font-label-sm cursor-pointer transition-colors"
+                    style={{
+                      border: '1px solid var(--color-outline-variant, #ccc)',
+                      color: showHeat ? 'var(--color-on-error-container, #fff)' : 'var(--color-error, #d32f2f)',
+                      background: showHeat ? 'var(--color-error, #d32f2f)' : 'transparent',
+                    }}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">local_fire_department</span>
+                    {showHeat ? 'Hide damage' : 'Show damage'}
+                  </button>
+                ) : (
+                  <span className="font-label-sm text-[11px] text-secondary opacity-70">No damage overlay</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => deleteResult(lightbox.group.items[lightbox.currentIndex].filename)}
+                  title="Delete this image"
+                  className="flex items-center gap-xs px-sm py-xs rounded-full text-[12px] font-label-sm cursor-pointer transition-colors"
+                  style={{
+                    border: '1px solid var(--color-outline-variant, #ccc)',
+                    color: 'var(--color-error, #d32f2f)',
+                    background: 'transparent',
+                  }}
+                >
+                  <span className="material-symbols-outlined text-[16px]">delete</span>
+                  Delete
+                </button>
+                {lightbox.group.items.length > 1 && (
+                  <span className="font-label-sm text-secondary bg-surface-variant px-2 py-0.5 rounded">
+                    Perspective {lightbox.currentIndex + 1} of {lightbox.group.items.length}
+                  </span>
+                )}
+              </div>
             </div>
             <p style={{ fontSize: '11px', opacity: 0.45, margin: 0 }}>
               Click outside or press Esc to close
@@ -530,6 +590,12 @@ const AnalysisAdmin = () => {
                             className="w-12 h-12 rounded-lg overflow-hidden border border-outline-variant bg-surface-container-low flex items-center justify-center flex-shrink-0 cursor-zoom-in hover:scale-105 transition-transform relative"
                           >
                             <img className="w-full h-full object-cover" src={`${BACKEND_URL}/thumbnail/${row.filename}`} alt={row.filename} />
+                            {row.heatmap && (
+                              <div className="absolute top-0 left-0 bg-error text-on-error-container text-[10px] font-bold px-1 rounded-br-md flex items-center gap-0.5">
+                                <span className="material-symbols-outlined text-[12px]">local_fire_department</span>
+                                damage
+                              </div>
+                            )}
                             {group.items.length > 1 && (
                               <div className="absolute bottom-0 right-0 bg-black/60 text-white text-[10px] px-1 font-bold rounded-tl-md">
                                 {group.items.length}

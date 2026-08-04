@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { ApiError } from '../api';
 import PasswordField from './PasswordField';
@@ -11,7 +11,8 @@ import PasswordField from './PasswordField';
  */
 const AuthModal = () => {
   const { authModal, closeAuth, signIn, signUp, addNotification } = useApp();
-  const { open, mode } = authModal;
+  // Guard against a malformed authModal object so the modal never crashes.
+  const { open, mode } = authModal || { open: false, mode: 'login' };
 
   const [isLogin, setIsLogin] = useState(mode === 'login');
   const [name, setName]         = useState('');
@@ -20,6 +21,10 @@ const AuthModal = () => {
   const [confirm, setConfirm]    = useState('');
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
+  const mounted = useRef(true);
+
+  // Track mount so async resolves after unmount don't trigger setState warnings.
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   // Reset transient state each time the modal opens; sync toggle to requested mode.
   useEffect(() => {
@@ -55,16 +60,17 @@ const AuthModal = () => {
     try {
       if (isLogin) {
         const data = await signIn(email, password);
-        addNotification('success', `Welcome back, ${data.user.name}!`);
+        const who = (data && data.user && data.user.name) || 'there';
+        if (mounted.current) addNotification('success', `Welcome back, ${who}!`);
       } else {
         const data = await signUp(email, name, password);
-        addNotification('success',
-          data.admin_access ? 'Account created — admin access granted.' : 'Account created successfully.');
+        if (mounted.current) addNotification('success',
+          data && data.admin_access ? 'Account created — admin access granted.' : 'Account created successfully.');
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong.');
+      if (mounted.current) setError(err instanceof ApiError ? err.message : 'Something went wrong.');
     } finally {
-      setLoading(false);
+      if (mounted.current) setLoading(false);
     }
   };
 

@@ -69,6 +69,7 @@ export const api = {
   changePassword: (old_password, new_password) =>
     request('POST', '/auth/change-password', { old_password, new_password }),
   history:  ()                      => request('GET',  '/auth/history'),
+  processed: ()                     => request('GET',  '/auth/processed'),
   adminAccessList: ()               => request('GET',  '/auth/admin-access'),
   grantAccess:  (email)             => request('POST', '/auth/admin-access', { email }),
   revokeAccess: (email)             => request('DELETE', '/auth/admin-access', { email }),

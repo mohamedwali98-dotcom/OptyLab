@@ -71,7 +71,7 @@ const TopNavBar = () => {
     notifications, clearNotifications, removeNotification,
     darkMode, toggleDarkMode,
     settings, updateSetting,
-    user, adminAccess, signIn, signUp, signOut, openAuth,
+    user, adminAccess, signIn, signUp, signOut, openAuth, openAccount,
   } = useApp();
 
   const [showNotifs,   setShowNotifs]   = useState(false);
@@ -124,6 +124,22 @@ const TopNavBar = () => {
 
         {/* Trailing actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+
+          {/* ── Account button (moved from sidebar) ──────────────────── */}
+          {user && (
+            <button
+              onClick={openAccount}
+              title="Account"
+              style={{
+                background: 'none',
+                border: 'none', cursor: 'pointer', padding: '8px', borderRadius: '8px',
+                color: 'var(--color-primary, #2a6918)',
+                display: 'flex', alignItems: 'center',
+              }}
+            >
+              <span className="material-symbols-outlined">manage_accounts</span>
+            </button>
+          )}
 
           {/* ── Notifications button ──────────────────────────────────────── */}
           <div ref={notifsRef} style={{ position: 'relative' }}>
@@ -275,7 +291,7 @@ const TopNavBar = () => {
                         display: 'flex', alignItems: 'center', gap: '10px',
                         fontSize: '13px', color: 'var(--color-on-surface, #191c1e)',
                       }}
-                        onClick={() => { navigate('/account'); setShowProfile(false); }}
+                        onClick={() => { openAccount(); setShowProfile(false); }}
                         onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-container-low, #f5f5f5)'}
                         onMouseLeave={e => e.currentTarget.style.background = 'none'}
                       >
