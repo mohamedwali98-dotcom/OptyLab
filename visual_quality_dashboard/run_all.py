@@ -1,9 +1,36 @@
 import subprocess
 import os
 import sys
+import shutil
 
 # Always use Python 3.14 where fastapi and other dependencies are installed
 PYTHON = r"C:/Python314/python.exe"
+
+def cleanup_cache():
+    print("[Orchestrator] Cleaning up uploads folder and results...")
+    backend_dir = os.path.join(os.path.dirname(__file__), "backend")
+    uploads_dir = os.path.join(backend_dir, "uploads")
+    results_file = os.path.join(backend_dir, "results.json")
+    
+    # Clear uploads folder
+    if os.path.exists(uploads_dir):
+        for filename in os.listdir(uploads_dir):
+            file_path = os.path.join(uploads_dir, filename)
+            try:
+                if os.path.isfile(file_path) or os.path.islink(file_path):
+                    os.unlink(file_path)
+                elif os.path.isdir(file_path):
+                    shutil.rmtree(file_path)
+            except Exception as e:
+                print(f"[Orchestrator] Failed to delete {file_path}. Reason: {e}")
+                
+    # Clear results.json
+    if os.path.exists(results_file):
+        try:
+            with open(results_file, 'w', encoding='utf-8') as f:
+                f.write("[]")
+        except Exception as e:
+            print(f"[Orchestrator] Failed to clear results.json. Reason: {e}")
 
 def run_backend():
     print("[Backend] Installing requirements...")
@@ -36,6 +63,9 @@ def run_frontend():
 if __name__ == "__main__":
     print("Starting OptyLab Visual Quality Dashboard Orchestration...\n")
     
+    # Always ensure we start with a clean slate
+    cleanup_cache()
+    
     backend_proc = run_backend()
     frontend_proc = run_frontend()
     
@@ -51,3 +81,5 @@ if __name__ == "__main__":
         backend_proc.wait()
         frontend_proc.wait()
         print("[Orchestrator] All servers stopped.")
+        
+        cleanup_cache()

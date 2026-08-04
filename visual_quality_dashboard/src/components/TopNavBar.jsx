@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
 /* ── Small helper: format relative time ───────────────────────────────────── */
@@ -70,15 +71,15 @@ const TopNavBar = () => {
     notifications, clearNotifications, removeNotification,
     darkMode, toggleDarkMode,
     settings, updateSetting,
-    user, signInMock, signOut,
+    user, adminAccess, signIn, signUp, signOut, openAuth,
   } = useApp();
 
   const [showNotifs,   setShowNotifs]   = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [showProfile,  setShowProfile]  = useState(false);
 
+  const navigate = useNavigate();
+
   const notifsRef   = useRef(null);
-  const settingsRef = useRef(null);
   const profileRef  = useRef(null);
 
   const unread = notifications.length;
@@ -87,16 +88,14 @@ const TopNavBar = () => {
   useEffect(() => {
     const handler = (e) => {
       if (notifsRef.current   && !notifsRef.current.contains(e.target))   setShowNotifs(false);
-      if (settingsRef.current && !settingsRef.current.contains(e.target)) setShowSettings(false);
       if (profileRef.current  && !profileRef.current.contains(e.target))  setShowProfile(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const toggleNotifs   = () => { setShowNotifs(v => !v);   setShowSettings(false); setShowProfile(false); };
-  const toggleSettings = () => { setShowSettings(v => !v); setShowNotifs(false);   setShowProfile(false); };
-  const toggleProfile  = () => { setShowProfile(v => !v);  setShowNotifs(false);   setShowSettings(false); };
+  const toggleNotifs   = () => { setShowNotifs(v => !v);   setShowProfile(false); };
+  const toggleProfile  = () => { setShowProfile(v => !v);  setShowNotifs(false); };
 
   return (
     <>
@@ -214,98 +213,6 @@ const TopNavBar = () => {
             )}
           </div>
 
-          {/* ── Settings button ───────────────────────────────────────────── */}
-          <div ref={settingsRef} style={{ position: 'relative' }}>
-            <button
-              onClick={toggleSettings}
-              title="Settings"
-              style={{
-                background: showSettings ? 'var(--color-surface-container-low, #f5f5f5)' : 'none',
-                border: 'none', cursor: 'pointer', padding: '8px', borderRadius: '8px',
-                color: 'var(--color-primary, #2a6918)',
-                display: 'flex', alignItems: 'center',
-              }}
-            >
-              <span className="material-symbols-outlined">settings</span>
-            </button>
-
-            {showSettings && (
-              <Panel>
-                {/* Header */}
-                <div style={{
-                  padding: '12px 16px',
-                  borderBottom: '1px solid var(--color-surface-variant, #e0e3e5)',
-                  fontWeight: 700, fontSize: '14px',
-                }}>
-                  Settings
-                </div>
-
-                <div style={{ padding: '8px 16px 4px' }}>
-                  {/* ── Appearance ─────────────────────────────── */}
-                  <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-secondary, #777)', marginBottom: '4px', textTransform: 'uppercase' }}>
-                    Appearance
-                  </div>
-
-                  <Toggle
-                    value={darkMode}
-                    onChange={toggleDarkMode}
-                    label="Dark Mode"
-                    sublabel="Switch between light and dark theme"
-                  />
-
-                  <Toggle
-                    value={settings.compactView}
-                    onChange={v => updateSetting('compactView', v)}
-                    label="Compact View"
-                    sublabel="Reduce row height in results table"
-                  />
-
-                  <div style={{ borderTop: '1px solid var(--color-surface-variant, #e0e3e5)', margin: '8px 0' }} />
-
-                  {/* ── Workflow ────────────────────────────────── */}
-                  <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-secondary, #777)', marginBottom: '4px', textTransform: 'uppercase' }}>
-                    Workflow
-                  </div>
-
-                  <Toggle
-                    value={settings.autoRefresh}
-                    onChange={v => updateSetting('autoRefresh', v)}
-                    label="Auto-refresh Results"
-                    sublabel="Poll results every 10 s automatically"
-                  />
-
-                  <Toggle
-                    value={settings.showConfidence}
-                    onChange={v => updateSetting('showConfidence', v)}
-                    label="Show Confidence Bar"
-                    sublabel="Display confidence score in results"
-                  />
-
-                  <div style={{ borderTop: '1px solid var(--color-surface-variant, #e0e3e5)', margin: '8px 0' }} />
-
-                  {/* ── Notifications ───────────────────────────── */}
-                  <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-secondary, #777)', marginBottom: '4px', textTransform: 'uppercase' }}>
-                    Notifications
-                  </div>
-
-                  <Toggle
-                    value={settings.notificationSound}
-                    onChange={v => updateSetting('notificationSound', v)}
-                    label="Sound Alerts"
-                    sublabel="Play a sound on upload / classify events"
-                  />
-
-                  <div style={{ borderTop: '1px solid var(--color-surface-variant, #e0e3e5)', margin: '8px 0' }} />
-                </div>
-
-                <div style={{ padding: '10px 16px', borderTop: '1px solid var(--color-surface-variant, #e0e3e5)' }}>
-                  <p style={{ fontSize: '11px', color: 'var(--color-secondary, #777)', margin: 0 }}>
-                    Settings are saved locally. More options coming soon.
-                  </p>
-                </div>
-              </Panel>
-            )}
-          </div>
 
           {/* ── Profile / Auth button ─────────────────────────────────────── */}
           <div ref={profileRef} style={{ position: 'relative', marginLeft: '4px' }}>
@@ -355,7 +262,7 @@ const TopNavBar = () => {
                         <div style={{ fontSize: '12px', color: 'var(--color-secondary, #777)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</div>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px', background: 'var(--color-primary-container, #d0e4ff)', borderRadius: '99px', padding: '2px 8px' }}>
                           <span className="material-symbols-outlined" style={{ fontSize: '12px', color: 'var(--color-primary, #2a6918)', fontVariationSettings: "'FILL' 1" }}>verified</span>
-                          <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-primary, #2a6918)' }}>Google Account</span>
+                          <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-primary, #2a6918)' }}>{adminAccess ? 'Admin' : 'Member'}</span>
                         </div>
                       </div>
                     </div>
@@ -368,12 +275,28 @@ const TopNavBar = () => {
                         display: 'flex', alignItems: 'center', gap: '10px',
                         fontSize: '13px', color: 'var(--color-on-surface, #191c1e)',
                       }}
+                        onClick={() => { navigate('/account'); setShowProfile(false); }}
                         onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-container-low, #f5f5f5)'}
                         onMouseLeave={e => e.currentTarget.style.background = 'none'}
                       >
                         <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>manage_accounts</span>
-                        Manage Google Account
+                        My account
                       </button>
+                      {adminAccess && (
+                        <button style={{
+                          width: '100%', padding: '9px 12px', borderRadius: '8px', border: 'none',
+                          background: 'none', cursor: 'pointer', textAlign: 'left',
+                          display: 'flex', alignItems: 'center', gap: '10px',
+                          fontSize: '13px', color: 'var(--color-on-surface, #191c1e)',
+                        }}
+                          onClick={() => { navigate('/access'); setShowProfile(false); }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface-container-low, #f5f5f5)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>admin_panel_settings</span>
+                          Admin access
+                        </button>
+                      )}
                       <button
                         onClick={() => { signOut(); setShowProfile(false); }}
                         style={{
@@ -396,50 +319,30 @@ const TopNavBar = () => {
                     <div style={{ padding: '20px 16px 12px', textAlign: 'center', borderBottom: '1px solid var(--color-surface-variant, #e0e3e5)' }}>
                       <span className="material-symbols-outlined" style={{ fontSize: '40px', color: 'var(--color-secondary, #777)', display: 'block', marginBottom: '8px' }}>account_circle</span>
                       <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '4px' }}>Sign in to OptyLab</div>
-                      <div style={{ fontSize: '12px', color: 'var(--color-secondary, #777)' }}>Access your analysis history and sync results across devices.</div>
+                      <div style={{ fontSize: '12px', color: 'var(--color-secondary, #777)' }}>Access the analysis dashboard and admin tools.</div>
                     </div>
 
-                    <div style={{ padding: '12px 16px 16px' }}>
-                      {/* Google Sign-In button (mock) */}
+                    <div style={{ padding: '12px 16px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <button
-                        onClick={() => {
-                          /* ── PRODUCTION: replace this block with real Google OAuth ──
-                             import { googleLogIn } from './auth';
-                             googleLogIn().then(profile => signInMock(profile));
-                          ─────────────────────────────────────────────────────────── */
-                          signInMock({
-                            name: 'Mohammed (Demo)',
-                            email: 'user@optylab.ai',
-                            picture: null,
-                          });
-                          setShowProfile(false);
-                        }}
+                        onClick={() => { setShowProfile(false); openAuth('login'); }}
                         style={{
-                          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                          padding: '10px 16px', borderRadius: '8px',
-                          border: '1px solid var(--color-outline-variant, #ccc)',
-                          background: '#fff', cursor: 'pointer',
+                          width: '100%', padding: '10px 16px', borderRadius: '8px',
+                          border: 'none', background: 'var(--color-primary, #2a6918)', color: '#fff', cursor: 'pointer',
                           fontSize: '14px', fontWeight: 600,
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.10)',
-                          transition: 'box-shadow 0.15s',
                         }}
-                        onMouseEnter={e => e.currentTarget.style.boxShadow = '0 3px 8px rgba(0,0,0,0.15)'}
-                        onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.10)'}
                       >
-                        {/* Google G logo */}
-                        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
-                          <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
-                          <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
-                          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
-                        </svg>
-                        Sign in with Google
+                        Sign in
                       </button>
-
-                      <p style={{ fontSize: '11px', color: 'var(--color-secondary, #777)', textAlign: 'center', marginTop: '10px', lineHeight: '1.4' }}>
-                        By signing in you agree to our Terms of Service.
-                        <br />OAuth 2.0 — your password is never shared.
-                      </p>
+                      <button
+                        onClick={() => { setShowProfile(false); openAuth('register'); }}
+                        style={{
+                          width: '100%', padding: '10px 16px', borderRadius: '8px',
+                          border: '1px solid var(--color-outline-variant, #ccc)', background: '#fff', cursor: 'pointer',
+                          fontSize: '14px', fontWeight: 600, color: 'var(--color-on-surface, #191c1e)',
+                        }}
+                      >
+                        Create account
+                      </button>
                     </div>
                   </>
                 )}

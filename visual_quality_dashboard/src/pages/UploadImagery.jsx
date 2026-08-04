@@ -1,7 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 
-const BACKEND_URL = 'http://localhost:8000';
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const UploadImagery = () => {
   const { addNotification } = useApp();
@@ -28,11 +28,16 @@ const UploadImagery = () => {
       .catch(err => console.error('Failed to load queue:', err));
   }, []);
 
-  const addFilesToQueue = async (files) => {
+  const addFilesToQueue = async (files, isMultiPerspective = false) => {
     const validExts = ['.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif'];
     const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/') || validExts.some(ext => f.name.toLowerCase().endsWith(ext)));
     if (imageFiles.length === 0) {
       alert('No valid images found in the selection. Please select PNG, JPG, BMP, or TIFF files only.');
+      return;
+    }
+
+    if (isMultiPerspective && imageFiles.length < 2) {
+      alert('Please select at least 2 photos for a multi-perspective upload.');
       return;
     }
 
@@ -49,6 +54,11 @@ const UploadImagery = () => {
     // Upload to backend
     const formData = new FormData();
     imageFiles.forEach(f => formData.append('files', f));
+    
+    if (isMultiPerspective) {
+      const groupId = `lens-${Math.random().toString(36).substr(2, 6)}`;
+      formData.append('group_id', groupId);
+    }
 
     try {
       const res = await fetch(`${BACKEND_URL}/upload`, { method: 'POST', body: formData });
@@ -75,7 +85,12 @@ const UploadImagery = () => {
     }
   };
 
-  const handleFileChange = (e) => addFilesToQueue(e.target.files);
+  const handleFileChange = (e) => {
+    const isMulti = e.target.dataset.isMulti === 'true';
+    addFilesToQueue(e.target.files, isMulti);
+    e.target.value = null; // reset
+    delete e.target.dataset.isMulti;
+  };
 
   const handleDrop = useCallback((e) => {
     e.preventDefault();
@@ -181,6 +196,29 @@ const UploadImagery = () => {
             </button>
           </div>
 
+          {/* Multi-Perspective Upload */}
+          <div className="border border-outline-variant rounded-lg bg-surface-container-lowest p-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-md">
+              <div className="w-12 h-12 rounded-lg bg-surface-container flex items-center justify-center flex-shrink-0">
+                <span className="material-symbols-outlined text-secondary">collections</span>
+              </div>
+              <div>
+                <h4 className="font-headline-sm text-headline-sm text-on-surface">Upload a photo with more than one perspective</h4>
+                <p className="font-body-sm text-body-sm text-secondary">Upload 2 or more photos for the same lens</p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                fileInputRef.current.dataset.isMulti = 'true';
+                fileInputRef.current.click();
+              }}
+              className="border border-primary text-primary font-label-md px-md py-sm rounded hover:bg-surface-container-low transition-colors cursor-pointer active:opacity-80 flex items-center gap-xs whitespace-nowrap"
+            >
+              <span className="material-symbols-outlined text-[18px]">photo_library</span>
+              Select Photos
+            </button>
+          </div>
+
           {/* Hidden inputs */}
           <input ref={fileInputRef} type="file" accept="image/png, image/jpeg, image/bmp, image/tiff" multiple onChange={handleFileChange} style={{ display: 'none' }} />
           <input ref={folderInputRef} type="file" accept="image/png, image/jpeg, image/bmp, image/tiff" webkitdirectory="true" directory="true" multiple onChange={handleFileChange} style={{ display: 'none' }} />
@@ -218,9 +256,11 @@ const UploadImagery = () => {
                   <tbody>
                     {queue.map((entry) => (
                       <tr key={entry.id} className="border-b border-surface-variant last:border-0 hover:bg-surface-container-low transition-colors">
-                        <td className="py-sm px-md font-body-sm text-body-sm text-on-surface flex items-center gap-sm">
-                          <span className="material-symbols-outlined text-[18px] text-primary">image</span>
-                          <span className="truncate max-w-xs">{entry.name}</span>
+                        <td className="py-sm px-md font-body-sm text-body-sm text-on-surface">
+                          <div className="flex items-center gap-sm">
+                            <span className="material-symbols-outlined text-[18px] text-primary flex-shrink-0">image</span>
+                            <span className="truncate max-w-[40vw] sm:max-w-[50vw] md:max-w-[60vw] lg:max-w-[800px]" title={entry.name}>{entry.name}</span>
+                          </div>
                         </td>
                         <td className="py-sm px-md font-body-sm text-body-sm text-secondary">{formatBytes(entry.size)}</td>
                         <td className="py-sm px-md">{statusBadge(entry.status)}</td>

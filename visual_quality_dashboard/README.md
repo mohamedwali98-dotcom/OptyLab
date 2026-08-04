@@ -1,16 +1,60 @@
-# React + Vite
+# OptyLab - Visual Quality Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+OptyLab is a high-precision computer vision pipeline and full-stack dashboard designed to detect defects and verify the quality of manufactured eye lenses.
 
-Currently, two official plugins are available:
+## Architecture
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+OptyLab uses a **3-Model Voting Ensemble** to maximize accuracy and precision on fine details.
 
-## React Compiler
+### 1. The Ensemble Models
+- **SVM (Support Vector Machine):** Extracts Histogram of Oriented Gradients (HOG) features from the images to detect edge and texture anomalies.
+- **CNN (ResNet18):** A deep Convolutional Neural Network pretrained on ImageNet, fine-tuned to extract hierarchical spatial features.
+- **ViT (Vision Transformer):** A state-of-the-art transformer architecture (`torchvision.models.vit_b_16`) that models global image context using self-attention mechanisms.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 2. High Precision Processing
+Because eye lenses require extreme precision, all models are fed high-resolution images (`256x256`) using **Bicubic Interpolation**. This preserves fine edges and details that standard bilinear resizing would blur.
 
-## Expanding the Oxlint configuration
+### 3. Majority Voting
+During inference, the image is passed through all three models independently. A final prediction is made using a majority vote (e.g., if CNN and ViT say "Good" but SVM says "Damaged", the system outputs "Good").
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+## Project Structure
+
+```
+visual_quality_dashboard/
+├── backend/
+│   ├── classifier.py         # Orchestrator for the ensemble model
+│   ├── classifier_utils.py   # Shared config, data loaders, and transforms
+│   ├── classifier_svm.py     # SVM/HOG implementation
+│   ├── classifier_cnn.py     # ResNet18 implementation
+│   ├── classifier_vit.py     # Vision Transformer implementation
+│   ├── main.py               # FastAPI backend server
+│   ├── requirements.txt      # Python dependencies
+│   └── Dockerfile            # Container for the ML backend
+├── src/                      # Vite + React Frontend
+├── docker-compose.yml        # Orchestrates Frontend + Backend
+└── DB/                       # Database of images (Good/Damaged)
+```
+
+## Running the Application
+
+### Using Docker (Recommended)
+You can spin up the entire application stack using Docker Compose. This ensures the ML environment matches exactly.
+```bash
+docker compose up --build
+```
+- Frontend: `http://localhost:8080`
+- Backend: `http://localhost:8000`
+
+### Running Locally
+You can run the application directly on your machine using the helper script:
+```bash
+python run_all.py
+```
+*(Make sure you have Node.js and Python installed)*
+
+## API Endpoints
+
+- `GET /results`: Fetch historical analysis results.
+- `POST /classify`: Upload an image and get a classification from the ensemble.
+- `POST /train`: Retrain the ensemble model on the `DB/` directory.
+- `POST /correct-prediction`: Override a prediction and move the image to the correct folder in `DB/`.

@@ -6,3 +6,6 @@ scikit-image
 Pillow
 numpy
 joblib
+torch
+torchvision
+transformers

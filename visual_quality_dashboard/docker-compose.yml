@@ -1,11 +1,38 @@
 version: '3.8'
 
 services:
-  dashboard:
+  # ── ML Backend (FastAPI + PyTorch + SVM) ─────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist the training DB and trained model weights outside the container
+      - ./DB:/app/DB
+      - ./models:/app/models
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    container_name: optylab_backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── React Frontend (Vite build → Nginx) ──────────────────────────────────
+  frontend:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # The frontend calls the backend via the host machine's exposed port
+        VITE_API_URL: http://localhost:8000
     ports:
       - "8080:80"
     restart: unless-stopped
-    container_name: visual_quality_dashboard
+    container_name: optylab_frontend
+    depends_on:
+      - backend

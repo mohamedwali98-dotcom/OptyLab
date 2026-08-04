@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
-const BACKEND_URL = 'http://localhost:8000';
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const AnalysisAdmin = () => {
   const [stats, setStats] = useState(null);
@@ -13,10 +13,22 @@ const AnalysisAdmin = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [correctingFile, setCorrectingFile] = useState(null);
   const [lightbox, setLightbox] = useState(null);
+  const [sortKey, setSortKey]   = useState(null);
+  const [sortDir, setSortDir]   = useState('asc');
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const tableContainerRef = useRef(null);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') setLightbox(null);
+      if (lightbox && lightbox.group.items.length > 1) {
+        if (e.key === 'ArrowLeft') {
+          setLightbox(prev => ({ ...prev, currentIndex: prev.currentIndex > 0 ? prev.currentIndex - 1 : prev.group.items.length - 1 }));
+        }
+        if (e.key === 'ArrowRight') {
+          setLightbox(prev => ({ ...prev, currentIndex: prev.currentIndex < prev.group.items.length - 1 ? prev.currentIndex + 1 : 0 }));
+        }
+      }
     };
     if (lightbox) {
       document.addEventListener('keydown', handleKeyDown);
@@ -30,6 +42,71 @@ const AnalysisAdmin = () => {
       document.body.style.overflow = '';
     };
   }, [lightbox]);
+
+  const groupedResults = React.useMemo(() => {
+    const groups = [];
+    const map = new Map();
+
+    results.forEach(r => {
+      const gId = r.group_id || r.id;
+      if (!map.has(gId)) {
+        map.set(gId, {
+          groupId: gId,
+          items: [],
+          prediction: 'Good',
+          confidence: 0,
+        });
+        groups.push(map.get(gId));
+      }
+      const g = map.get(gId);
+      g.items.push(r);
+      if (r.prediction === 'Damaged') {
+        g.prediction = 'Damaged';
+      }
+      g.confidence = g.items.reduce((sum, item) => sum + item.confidence, 0) / g.items.length;
+      g.timestamp  = g.items[0].timestamp;
+    });
+
+    // ── Sorting ─────────────────────────────────────────────────────
+    if (sortKey) {
+      groups.sort((a, b) => {
+        let va, vb;
+        if (sortKey === 'name') {
+          va = (a.items.length > 1 ? 'Multi-Perspective Lens' : a.items[0].filename).toLowerCase();
+          vb = (b.items.length > 1 ? 'Multi-Perspective Lens' : b.items[0].filename).toLowerCase();
+        } else if (sortKey === 'timestamp') {
+          va = a.timestamp; vb = b.timestamp;
+        } else if (sortKey === 'final') {
+          va = a.prediction; vb = b.prediction;
+        } else if (sortKey === 'confidence') {
+          va = a.confidence; vb = b.confidence;
+        }
+        if (va < vb) return sortDir === 'asc' ? -1 : 1;
+        if (va > vb) return sortDir === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return groups;
+  }, [results, sortKey, sortDir]);
+
+  // ── Scroll helpers ───────────────────────────────────────────
+  const handleTableScroll = useCallback(() => {
+    if (tableContainerRef.current) {
+      setShowScrollTop(tableContainerRef.current.scrollTop > 120);
+    }
+  }, []);
+  const scrollToTop = () => tableContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+
+  // ── Column sort toggle ────────────────────────────────────────
+  const handleSort = (key) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir('asc'); }
+  };
+  const SortIcon = ({ colKey }) => {
+    if (sortKey !== colKey) return <span className="material-symbols-outlined text-[13px] opacity-25 ml-0.5 align-middle">unfold_more</span>;
+    return <span className="material-symbols-outlined text-[13px] text-primary ml-0.5 align-middle">{sortDir === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>;
+  };
 
   const fetchStats = async () => {
     try {
@@ -145,9 +222,9 @@ const AnalysisAdmin = () => {
     );
   };
 
-  const filteredResults = results.filter((row) => {
+  const filteredResults = groupedResults.filter((group) => {
     const query = searchQuery.toLowerCase();
-    return (
+    return group.items.some(row => 
       (row.id && row.id.toLowerCase().includes(query)) ||
       (row.filename && row.filename.toLowerCase().includes(query))
     );
@@ -172,6 +249,15 @@ const AnalysisAdmin = () => {
             animation: 'fadeIn 0.18s ease',
           }}
         >
+          {lightbox.group.items.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setLightbox(prev => ({ ...prev, currentIndex: prev.currentIndex > 0 ? prev.currentIndex - 1 : prev.group.items.length - 1 })); }}
+              className="absolute left-4 top-1/2 -translate-y-1/2 p-4 text-white hover:bg-white/20 rounded-full transition-colors z-50 cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[48px]">chevron_left</span>
+            </button>
+          )}
+
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
@@ -186,11 +272,12 @@ const AnalysisAdmin = () => {
               alignItems: 'center',
               gap: '10px',
               animation: 'scaleIn 0.18s ease',
+              position: 'relative'
             }}
           >
             <img
-              src={lightbox.src}
-              alt={lightbox.filename}
+              src={`${BACKEND_URL}/thumbnail/${lightbox.group.items[lightbox.currentIndex].filename}`}
+              alt={lightbox.group.items[lightbox.currentIndex].filename}
               style={{
                 maxWidth: '70vw',
                 maxHeight: '65vh',
@@ -199,16 +286,32 @@ const AnalysisAdmin = () => {
                 display: 'block',
               }}
             />
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ fontSize: '13px', opacity: 0.7, fontWeight: 500 }}>
-                {lightbox.filename}
-              </span>
-              {stateBadge(lightbox.prediction, false)}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', justifyContent: 'space-between' }}>
+              <div className="flex items-center gap-2">
+                <span style={{ fontSize: '13px', opacity: 0.7, fontWeight: 500 }}>
+                  {lightbox.group.items[lightbox.currentIndex].filename}
+                </span>
+                {stateBadge(lightbox.group.items[lightbox.currentIndex].prediction, lightbox.group.items[lightbox.currentIndex].corrected)}
+              </div>
+              {lightbox.group.items.length > 1 && (
+                <span className="font-label-sm text-secondary bg-surface-variant px-2 py-0.5 rounded">
+                  Perspective {lightbox.currentIndex + 1} of {lightbox.group.items.length}
+                </span>
+              )}
             </div>
             <p style={{ fontSize: '11px', opacity: 0.45, margin: 0 }}>
               Click outside or press Esc to close
             </p>
           </div>
+
+          {lightbox.group.items.length > 1 && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setLightbox(prev => ({ ...prev, currentIndex: prev.currentIndex < prev.group.items.length - 1 ? prev.currentIndex + 1 : 0 })); }}
+              className="absolute right-4 top-1/2 -translate-y-1/2 p-4 text-white hover:bg-white/20 rounded-full transition-colors z-50 cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[48px]">chevron_right</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -288,7 +391,7 @@ const AnalysisAdmin = () => {
         <section>
           <h2 className="font-headline-sm text-headline-sm text-on-surface mb-md flex items-center gap-sm">
             <span className="material-symbols-outlined text-primary">insights</span>
-            Detailed Cross-Validation Report
+            Detailed Model Performance Report
           </h2>
 
           {statsLoading && (
@@ -320,72 +423,28 @@ const AnalysisAdmin = () => {
                 <MetricCard label="F1-Score" value={`${(stats.f1 * 100).toFixed(1)}%`} icon="balance" color="text-on-surface" />
               </div>
 
-              {/* Per-fold accuracy bar chart */}
+              {/* Per-model accuracy bar chart */}
               <div className="bg-surface-container-lowest border border-surface-variant rounded-lg p-md mb-md">
-                <h3 className="font-label-md text-label-md text-secondary uppercase tracking-wider mb-md">Accuracy per Fold</h3>
+                <h3 className="font-label-md text-label-md text-secondary uppercase tracking-wider mb-md">Accuracy per Model</h3>
                 <div className="flex items-end gap-md h-32">
-                  {stats.fold_accuracies.map((acc, i) => (
+                  {(stats.model_accuracies || []).map((acc, i) => (
                     <div key={i} className="flex-1 flex flex-col items-center gap-xs">
                       <span className="font-body-sm text-body-sm text-primary font-semibold">{(acc * 100).toFixed(0)}%</span>
                       <div className="w-full bg-surface-variant rounded-t" style={{ height: `${acc * 100}%` }}>
                         <div className="w-full h-full bg-primary rounded-t opacity-80" />
                       </div>
-                      <span className="font-body-sm text-body-sm text-secondary">Fold {i + 1}</span>
+                      <span className="font-body-sm text-body-sm text-secondary">{['SVM', 'CNN', 'ViT'][i] || `Model ${i+1}`}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Confusion Matrix */}
-              <div className="bg-surface-container-lowest border border-surface-variant rounded-lg p-md">
-                <h3 className="font-label-md text-label-md text-secondary uppercase tracking-wider mb-md">Confusion Matrix</h3>
-                <div className="max-w-md overflow-hidden border border-outline-variant rounded-lg">
-                  <table className="w-full text-center border-collapse">
-                    <thead>
-                      <tr className="bg-surface-container border-b border-outline-variant">
-                        <th className="p-sm font-label-md text-label-md text-secondary"></th>
-                        <th className="p-sm font-label-md text-label-md text-secondary font-semibold">Pred: Good</th>
-                        <th className="p-sm font-label-md text-label-md text-secondary font-semibold">Pred: Damaged</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-b border-outline-variant hover:bg-surface-container-low/50">
-                        <td className="p-sm font-label-md text-label-md text-secondary font-semibold text-left bg-surface-container/30">
-                          Act: Good
-                        </td>
-                        <td className="p-sm bg-primary/10 text-primary font-bold text-center">
-                          <div className="text-lg font-bold">{stats.confusion_matrix[0][0]}</div>
-                          <div className="text-[10px] opacity-75 font-normal">True Good</div>
-                        </td>
-                        <td className="p-sm bg-error/10 text-error font-bold text-center">
-                          <div className="text-lg font-bold">{stats.confusion_matrix[0][1]}</div>
-                          <div className="text-[10px] opacity-75 font-normal">False Damaged</div>
-                        </td>
-                      </tr>
-                      <tr className="hover:bg-surface-container-low/50">
-                        <td className="p-sm font-label-md text-label-md text-secondary font-semibold text-left bg-surface-container/30">
-                          Act: Damaged
-                        </td>
-                        <td className="p-sm bg-error/10 text-error font-bold text-center">
-                          <div className="text-lg font-bold">{stats.confusion_matrix[1][0]}</div>
-                          <div className="text-[10px] opacity-75 font-normal">False Good</div>
-                        </td>
-                        <td className="p-sm bg-primary/10 text-primary font-bold text-center">
-                          <div className="text-lg font-bold">{stats.confusion_matrix[1][1]}</div>
-                          <div className="text-[10px] opacity-75 font-normal">True Damaged</div>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-                <p className="font-body-sm text-body-sm text-secondary mt-sm">Training images: {stats.n_good} Good, {stats.n_damaged} Damaged</p>
-              </div>
             </>
           )}
         </section>
 
         {/* Scan Review Table */}
-        <section className="bg-surface-container-lowest rounded-lg border border-surface-variant overflow-hidden flex flex-col flex-grow">
+        <section className="bg-surface-container-lowest rounded-lg border border-surface-variant flex flex-col flex-grow" style={{ overflow: 'clip' }}>
           <div className="p-sm md:p-md border-b border-surface-variant bg-surface-container-low flex justify-between items-center">
             <h2 className="font-headline-sm text-headline-sm text-on-surface">Recent Scans</h2>
             <div className="relative w-64">
@@ -399,49 +458,83 @@ const AnalysisAdmin = () => {
               />
             </div>
           </div>
-          <div className="overflow-x-auto flex-grow">
+          <div
+            ref={tableContainerRef}
+            onScroll={handleTableScroll}
+            className="overflow-x-auto overflow-y-auto flex-grow"
+            style={{ maxHeight: '55vh' }}
+          >
             <table className="w-full text-left border-collapse">
-              <thead className="bg-surface-container-low sticky top-0 z-10 border-b border-surface-variant">
+              <thead className="bg-surface-container-low sticky top-0 z-20 border-b border-surface-variant shadow-sm">
                 <tr>
                   <th className="p-sm font-label-md text-label-md text-on-surface-variant font-semibold">Picture</th>
-                  <th className="p-sm font-label-md text-label-md text-on-surface-variant font-semibold">Filename</th>
-                  <th className="p-sm font-label-md text-label-md text-on-surface-variant font-semibold">Timestamp</th>
-                  <th className="p-sm font-label-md text-label-md text-on-surface-variant font-semibold">Prediction</th>
-                  <th className="p-sm font-label-md text-label-md text-on-surface-variant font-semibold">Confidence</th>
+                  <th
+                    className="p-sm font-label-md text-label-md text-on-surface-variant font-semibold cursor-pointer select-none hover:text-on-surface transition-colors"
+                    onClick={() => handleSort('name')}
+                  >
+                    <span className="inline-flex items-center">Filename <SortIcon colKey="name" /></span>
+                  </th>
+                  <th
+                    className="p-sm font-label-md text-label-md text-on-surface-variant font-semibold cursor-pointer select-none hover:text-on-surface transition-colors"
+                    onClick={() => handleSort('timestamp')}
+                  >
+                    <span className="inline-flex items-center">Timestamp <SortIcon colKey="timestamp" /></span>
+                  </th>
+                  <th className="p-sm font-label-md text-label-md text-on-surface-variant font-semibold">SVM</th>
+                  <th className="p-sm font-label-md text-label-md text-on-surface-variant font-semibold">CNN</th>
+                  <th className="p-sm font-label-md text-label-md text-on-surface-variant font-semibold">ViT</th>
+                  <th
+                    className="p-sm font-label-md text-label-md text-on-surface-variant font-semibold cursor-pointer select-none hover:text-on-surface transition-colors"
+                    onClick={() => handleSort('final')}
+                  >
+                    <span className="inline-flex items-center">Final <SortIcon colKey="final" /></span>
+                  </th>
+                  <th
+                    className="p-sm font-label-md text-label-md text-on-surface-variant font-semibold cursor-pointer select-none hover:text-on-surface transition-colors"
+                    onClick={() => handleSort('confidence')}
+                  >
+                    <span className="inline-flex items-center">Conf <SortIcon colKey="confidence" /></span>
+                  </th>
                   <th className="p-sm font-label-md text-label-md text-on-surface-variant font-semibold">Action</th>
                 </tr>
               </thead>
               <tbody className="font-body-sm text-body-sm divide-y divide-surface-variant">
                 {resultsLoading ? (
                   <tr>
-                    <td colSpan={6} className="py-xl text-center text-secondary font-body-sm">
+                    <td colSpan={9} className="py-xl text-center text-secondary font-body-sm">
                       <span className="material-symbols-outlined text-[32px] mb-2 block animate-spin">progress_activity</span>
                       Loading scans...
                     </td>
                   </tr>
                 ) : filteredResults.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-xl text-center text-secondary font-body-sm">
+                    <td colSpan={9} className="py-xl text-center text-secondary font-body-sm">
                       {searchQuery ? 'No matching scans found.' : 'Upload images and run classification to see results here.'}
                     </td>
                   </tr>
                 ) : (
-                  filteredResults.map((row, i) => (
+                  filteredResults.map((group, i) => {
+                    const row = group.items[0]; // Representative item for table
+                    return (
                     <tr
-                      key={row.id || i}
+                      key={group.groupId}
                       className={`hover:bg-surface-container-low transition-colors ${i % 2 === 1 ? 'bg-surface-container-low/30' : ''}`}
                     >
                       <td className="p-sm">
                         {row.thumbnail ? (
                           <div
                             onClick={() => setLightbox({
-                              src: `${BACKEND_URL}/thumbnail/${row.filename}`,
-                              filename: row.filename,
-                              prediction: row.prediction,
+                              group: group,
+                              currentIndex: 0
                             })}
-                            className="w-12 h-12 rounded-lg overflow-hidden border border-outline-variant bg-surface-container-low flex items-center justify-center flex-shrink-0 cursor-zoom-in hover:scale-105 transition-transform"
+                            className="w-12 h-12 rounded-lg overflow-hidden border border-outline-variant bg-surface-container-low flex items-center justify-center flex-shrink-0 cursor-zoom-in hover:scale-105 transition-transform relative"
                           >
                             <img className="w-full h-full object-cover" src={`${BACKEND_URL}/thumbnail/${row.filename}`} alt={row.filename} />
+                            {group.items.length > 1 && (
+                              <div className="absolute bottom-0 right-0 bg-black/60 text-white text-[10px] px-1 font-bold rounded-tl-md">
+                                {group.items.length}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="w-12 h-12 rounded-lg border border-outline-variant bg-surface-container-low flex items-center justify-center flex-shrink-0">
@@ -449,27 +542,45 @@ const AnalysisAdmin = () => {
                           </div>
                         )}
                       </td>
-                      <td className="p-sm font-medium text-on-surface max-w-[200px] truncate">{row.filename}</td>
+                      <td className="p-sm font-medium text-on-surface max-w-[200px] truncate">
+                        {group.items.length > 1 ? `Multi-Perspective Lens` : row.filename}
+                        {group.items.length > 1 && <div className="text-[11px] text-secondary font-normal">{group.items.length} images</div>}
+                      </td>
                       <td className="p-sm text-secondary">{new Date(row.timestamp).toLocaleString()}</td>
-                      <td className="p-sm">{stateBadge(row.prediction, row.corrected)}</td>
-                      <td className="p-sm text-secondary font-medium">{row.confidence ? `${Math.round(row.confidence * 100)}%` : 'N/A'}</td>
+                      <td className="p-sm">{stateBadge(row.models?.svm?.prediction || row.prediction, false)}</td>
+                      <td className="p-sm">{stateBadge(row.models?.cnn?.prediction || row.prediction, false)}</td>
+                      <td className="p-sm">{stateBadge(row.models?.vit?.prediction || row.prediction, false)}</td>
+                      <td className="p-sm">{stateBadge(group.prediction, row.corrected)}</td>
+                      <td className="p-sm text-secondary font-medium">{group.confidence ? `${Math.round(group.confidence * 100)}%` : 'N/A'}</td>
                       <td className="p-sm">
                         <button
                           disabled={correctingFile === row.filename}
-                          onClick={() => handleCorrect(row.filename, row.prediction === 'Good' ? 'Damaged' : 'Good')}
+                          onClick={() => handleCorrect(row.filename, group.prediction === 'Good' ? 'Damaged' : 'Good')}
                           className="flex items-center gap-xs px-sm py-xs border border-primary text-primary hover:bg-primary-container/10 rounded font-label-sm text-[12px] cursor-pointer transition-colors disabled:opacity-50"
                         >
                           <span className="material-symbols-outlined text-[14px]">edit</span>
-                          {correctingFile === row.filename ? 'Updating...' : row.prediction === 'Good' ? 'Mark Damaged' : 'Mark Good'}
+                          {correctingFile === row.filename ? 'Updating...' : group.prediction === 'Good' ? 'Mark Damaged' : 'Mark Good'}
                         </button>
                       </td>
                     </tr>
-                  ))
+                  )})
                 )}
               </tbody>
             </table>
           </div>
         </section>
+
+        {/* Scroll-to-top FAB */}
+        {showScrollTop && (
+          <button
+            onClick={scrollToTop}
+            title="Back to top"
+            className="fixed bottom-6 right-6 z-40 w-11 h-11 rounded-full bg-primary text-on-primary shadow-lg flex items-center justify-center hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+            style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.25)' }}
+          >
+            <span className="material-symbols-outlined text-[20px]">arrow_upward</span>
+          </button>
+        )}
       </main>
     </>
   );
