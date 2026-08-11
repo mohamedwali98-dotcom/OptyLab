@@ -6,6 +6,8 @@ scikit-image
 Pillow
 numpy
 joblib
+opencv-python-headless
 torch
 torchvision
 transformers
+pydantic
