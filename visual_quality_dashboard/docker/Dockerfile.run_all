@@ -3,16 +3,16 @@
 #
 # Usage:
 #   # Build
-#   docker build -t optylab/run_all -f docker/Dockerfile.run_all .
+#   docker build -t optylab/run_all -f visual_quality_dashboard/docker/Dockerfile.run_all .
 #   
 #   # Run in foreground
-#   docker run -p 8080:80 -p 8000:8000 -v "$(pwd)/DB:/app/DB" optylab/run_all
+#   docker run -p 8080:80 -p 8000:8000 -v $(pwd)/DB:/app/DB optylab/run_all
 #   
 #   # Run in detached mode
-#   docker run -d --name optylab_run_all -p 8080:80 -p 8000:8000 -v "$(pwd)/DB:/app/DB" optylab/run_all
+#   docker run -d --name optylab_run_all -p 8080:80 -p 8000:8000 -v $(pwd)/DB:/app/DB optylab/run_all
 #
 # Or use the shortcut:
-#   ./docker/run_all.sh
+#   ./visual_quality_dashboard/docker/run_all.sh
 
 # ── Build stage: Frontend ─────────────────────────────────────────────────────
 FROM node:20-alpine AS build-frontend
@@ -50,14 +50,9 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Install Python dependencies
+# Copy backend directory first (for requirements.txt)
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Create necessary directories
-RUN mkdir -p /app/DB/RawImagesDamaged /app/DB/RawImagesGood \
-    /app/DB/Damaged /app/DB/Good /app/model /app/uploads /app/heatmaps /app/backups \
-    /usr/share/nginx/html
 
 # Copy backend application code
 COPY backend/ .
@@ -69,7 +64,9 @@ COPY --from=build-frontend /app/dist /usr/share/nginx/html/
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Create symlink from /DB to /app/DB (code expects /DB)
-RUN ln -sf /app/DB /DB
+RUN mkdir -p /app/DB/RawImagesDamaged /app/DB/RawImagesGood \
+    /app/DB/Damaged /app/DB/Good /app/model /app/uploads /app/heatmaps /app/backups && \
+    ln -sf /app/DB /DB
 
 # Expose ports (80 for frontend, 8000 for backend API)
 EXPOSE 80 8000

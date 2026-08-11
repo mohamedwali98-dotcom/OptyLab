@@ -12,12 +12,14 @@ docker/
 ├── run_all.sh                # Shortcut script for full stack
 ├── nginx.conf                # Nginx configuration for combined image
 └── README.md                 # This file
+
+See the main project README.md at the OptyLab root for complete documentation.
 ```
 
 ## Prerequisites
 
 - Docker installed (Docker Desktop on Windows)
-- Git Bash or WSL2 for running shell scripts
+- Git Bash or WSL2 for running shell scripts (on Windows)
 
 ## Available Docker Images
 
@@ -137,7 +139,6 @@ docker stop optylab_run_all
 # Clean up
 docker image prune -f
 docker container prune -f
-docker system prune -a   # WARNING: removes ALL unused images
 ```
 
 ## Development

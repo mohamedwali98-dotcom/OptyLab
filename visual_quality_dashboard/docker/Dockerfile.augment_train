@@ -3,17 +3,14 @@
 # 
 # Usage:
 #   # Build
-#   docker build -t optylab/augment_train -f docker/Dockerfile.augment_train .
+#   docker build -t optylab/augment_train -f visual_quality_dashboard/docker/Dockerfile.augment_train .
 #   
 #   # Run (with data volumes)
 #   docker run --rm \
 #     -e AUG_PER_IMAGE=10 \
-#     -v "$(pwd)/DB:/app/DB" \
-#     -v "$(pwd)/backend/model:/app/model" \
+#     -v $(pwd)/DB:/app/DB \
+#     -v $(pwd)/visual_quality_dashboard/backend/model:/app/model \
 #     optylab/augment_train
-#
-# Or use the shortcut:
-#   ./docker/augment_train.sh
 
 FROM python:3.11-slim
 
@@ -25,16 +22,11 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
+# Copy backend directory (contains all Python files and requirements.txt)
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Create necessary directories
-# DB folder will be mounted from host or created in container
-RUN mkdir -p /app/DB/RawImagesDamaged /app/DB/RawImagesGood \
-    /app/DB/Damaged /app/DB/Good /app/model /app/backups
-
-# Copy backend application code
+# Copy the augmentation and training scripts and dependencies
 COPY backend/augment_and_train.py .
 COPY backend/augmentations.py .
 COPY backend/classifier.py .
@@ -44,12 +36,14 @@ COPY backend/classifier_cnn.py .
 COPY backend/classifier_vit.py .
 COPY backend/gradcam.py .
 
+# Create symlink from /DB to /app/DB (the code expects /DB)
+RUN mkdir -p /app/DB/RawImagesDamaged /app/DB/RawImagesGood \
+    /app/DB/Damaged /app/DB/Good /app/model && \
+    ln -sf /app/DB /DB
+
 # Environment variables
 ENV PYTHONUNBUFFERED=1
 ENV AUG_PER_IMAGE=10
-
-# Create symlink from /DB to /app/DB (the code expects /DB)
-RUN ln -sf /app/DB /DB
 
 # Run the training pipeline
 CMD ["python", "augment_and_train.py"]
