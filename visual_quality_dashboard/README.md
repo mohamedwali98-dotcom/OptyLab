@@ -32,6 +32,7 @@ OptyLab/
 │   │   ├── Dockerfile.run_all       # Full stack orchestration image
 │   │   ├── augment_train.sh         # Shortcut for training
 │   │   ├── run_all.sh               # Shortcut for full stack
+│   │   ├── nginx.conf               # Nginx configuration
 │   │   └── README.md                # Docker documentation
 │   ├── backend/
 │   │   ├── classifier.py         # Orchestrator for the ensemble model
@@ -42,11 +43,11 @@ OptyLab/
 │   │   ├── main.py               # FastAPI backend server
 │   │   ├── requirements.txt      # Python dependencies
 │   │   ├── augment_and_train.py  # Data augmentation + training pipeline
-│   │   ├── Dockerfile            # Container for the ML backend
-│   │   └── model/                # Trained model weights
+│   │   └── Dockerfile            # Container for the ML backend
 │   ├── src/                      # Vite + React Frontend
 │   ├── docker-compose.yml        # Orchestrates Frontend + Backend
 │   ├── run_all.py                # Local orchestration script
+│   ├── Dockerfile                # Container for the frontend
 │   └── README.md                 # Dashboard documentation
 ├── .gitignore
 └── package-lock.json
@@ -59,13 +60,15 @@ OptyLab/
 Start the entire application stack:
 
 ```bash
-# From the project root
+# From the project root (OptyLab directory)
 cd /c/Users/moham/Desktop/OptyLab
+
+# Start the full stack using docker-compose
 docker compose -f visual_quality_dashboard/docker-compose.yml up --build
 ```
 
 - Frontend: `http://localhost:8080`
-- Backend: `http://localhost:8000`
+- Backend API: `http://localhost:8000`
 
 ### Using Docker Shortcuts
 
@@ -86,13 +89,11 @@ cd /c/Users/moham/Desktop/OptyLab
 ./visual_quality_dashboard/docker/run_all.sh -d
 ```
 
-### Running Locally
-
-Run the application directly on your machine:
+### Running Locally (Development)
 
 ```bash
 cd visual_quality_dashboard
-python run_all.py
+npm run dev
 ```
 
 *(Make sure you have Node.js and Python installed)*
@@ -107,7 +108,6 @@ cd /c/Users/moham/Desktop/OptyLab
 ./visual_quality_dashboard/docker/augment_train.sh
 
 # Run with custom augmentation count (15 copies per image)
-cd /c/Users/moham/Desktop/OptyLab
 AUG_PER_IMAGE=15 ./visual_quality_dashboard/docker/augment_train.sh
 ```
 
@@ -115,11 +115,13 @@ AUG_PER_IMAGE=15 ./visual_quality_dashboard/docker/augment_train.sh
 
 - `GET /results` - Fetch historical analysis results.
 - `POST /classify` - Upload an image and get a classification from the ensemble.
-- `POST /train` - Retrain the ensemble model on the `DB/` directory.
+- `POST /train` - Retrain the ensemble model on the `DB/` directory (admin only).
 - `POST /correct-prediction` - Override a prediction and move the image to the correct folder.
 - `POST /upload` - Upload images for classification.
 - `GET /queue` - List images waiting for classification.
 - `DELETE /clear-uploads` - Clear all uploaded images and results.
+- `POST /auth/register` - Register a new user account.
+- `POST /auth/login` - Login with email and password.
 
 ## Docker Commands
 
@@ -130,8 +132,8 @@ docker build -t optylab/augment_train -f visual_quality_dashboard/docker/Dockerf
 docker build -t optylab/run_all -f visual_quality_dashboard/docker/Dockerfile.run_all .
 
 # Start services
-./visual_quality_dashboard/docker/run_all.sh -d    # Full stack via run_all
-docker compose -f visual_quality_dashboard/docker-compose.yml up  # Full stack via compose
+docker compose -f visual_quality_dashboard/docker-compose.yml up
+./visual_quality_dashboard/docker/run_all.sh -d
 
 # View logs
 docker logs -f optylab_backend
@@ -139,6 +141,7 @@ docker logs -f optylab_run_all
 
 # Stop services
 docker compose -f visual_quality_dashboard/docker-compose.yml down
+docker stop optylab_run_all
 ```
 
 ## Data Volumes
