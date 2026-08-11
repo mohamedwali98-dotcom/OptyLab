@@ -96,7 +96,7 @@ class PolarizingFilterSimulation:
         for freq in self.gabor_freqs:
             for theta_deg in range(0, 180, 45):
                 theta = math.radians(theta_deg)
-                kernel, _ = cv2.getGaborKernel(
+                kernel = cv2.getGaborKernel(
                     ksize=(21, 21),
                     sigma=4.0,
                     theta=theta,

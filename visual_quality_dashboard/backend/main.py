@@ -1,8 +1,4 @@
 """
-main.py
-=======
-FastAPI backend for the OptyLab Visual Quality Inspector.
-
 Start with:
     uvicorn main:app --reload --port 8000
 """
@@ -266,9 +262,9 @@ def _image_derived_confidence(img_path: Path) -> tuple[str, float, float, float]
     low-level image features so that each column in the dashboard reflects
     something genuinely different about the image:
 
-      SVM-proxy  → HOG feature energy / variance  (texture richness)
-      CNN-proxy  → Normalised pixel std-dev        (contrast / sharpness)
-      ViT-proxy  → Local block entropy mean        (structural complexity)
+      SVM-proxy  -> HOG feature energy / variance  (texture richness)
+      CNN-proxy  -> Normalised pixel std-dev        (contrast / sharpness)
+      ViT-proxy  -> Local block entropy mean        (structural complexity)
     """
     import numpy as np
     from PIL import Image
@@ -327,7 +323,7 @@ def _mock_classify(img_path: Path) -> dict:
     """
     Fallback classifier used when no trained model is available.
     Produces confidence values derived from real image features
-    (texture energy, contrast, local entropy) — NOT random numbers.
+    (texture energy, contrast, local entropy) - NOT random numbers.
     """
     prediction, conf_svm, conf_cnn, conf_vit = _image_derived_confidence(img_path)
 
@@ -351,8 +347,8 @@ def _mock_classify(img_path: Path) -> dict:
 def classify_all(request: Request):
     """
     Run classification on every uploaded image and store results.
-    - If a trained model exists  → uses HOG+SVM (real predictions).
-    - If no model is trained yet → falls back to random mock labels so
+    - If a trained model exists  -> uses HOG+SVM (real predictions).
+    - If no model is trained yet -> falls back to random mock labels so
       newly uploaded images always appear in the Results tab.
 
     If the caller is authenticated, each newly-classified image is recorded
@@ -465,22 +461,28 @@ def get_heatmap(filename: str):
 
 
 @app.delete("/clear-uploads")
-def clear_uploads(user: dict = Depends(require_user)):
+def clear_uploads(request: Request):
     """Delete all files in the uploads folder, the heatmaps folder, and reset the results cache."""
     deleted = 0
-    for f in UPLOADS_DIR.iterdir():
-        if f.is_file():
-            f.unlink()
-            deleted += 1
+    if UPLOADS_DIR.exists():
+        for f in UPLOADS_DIR.iterdir():
+            if f.is_file():
+                try:
+                    f.unlink()
+                    deleted += 1
+                except OSError:
+                    pass
+
     # Also clear damage-localization overlays (they live in their own folder).
     if HEATMAPS_DIR.exists():
         for f in HEATMAPS_DIR.iterdir():
-            if f.is_file() and f.name.endswith("__heatmap.png"):
+            if f.is_file():
                 try:
                     f.unlink()
                 except OSError:
                     pass
-    # Also clear results so they don't reference deleted files
+
+    # Reset results cache so old user's classification results do not linger
     write_results([])
     return {"message": f"Cleared {deleted} file(s) from the upload queue."}
 
