@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BACKEND_URL } from '../backend';
+import { getToken } from '../api';
 
 const AnalysisAdmin = () => {
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [training, setTraining] = useState(false);
+  const [trainLogs, setTrainLogs] = useState([]);
+  const [trainProgress, setTrainProgress] = useState(0);
+  const terminalRef = useRef(null);
   
   const [results, setResults] = useState([]);
   const [resultsLoading, setResultsLoading] = useState(true);
@@ -115,16 +119,19 @@ const AnalysisAdmin = () => {
   const deleteResult = async (filename) => {
     if (!window.confirm(`Delete "${filename}"? This removes the image from the upload folder.`)) return;
     try {
-      const res = await fetch(`${BACKEND_URL}/upload/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      const token = getToken();
+      const res = await fetch(`${BACKEND_URL}/upload/${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (res.ok) {
         setLightbox(null);
         await fetchResults();
-        addNotification('info', `Deleted ${filename}`);
       } else {
-        addNotification('error', 'Failed to delete image.');
+        alert('Failed to delete image.');
       }
     } catch {
-      addNotification('error', 'Cannot connect to backend.');
+      alert('Cannot connect to backend.');
     }
   };
 
@@ -170,18 +177,68 @@ const AnalysisAdmin = () => {
     fetchUploadStats();
   }, []);
 
+  useEffect(() => {
+    if (terminalRef.current) {
+      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    }
+  }, [trainLogs]);
+
   const handleRetrain = async () => {
     setTraining(true);
+    setTrainLogs(['Initializing training pipeline...']);
+    setTrainProgress(0);
     try {
-      const res = await fetch(`${BACKEND_URL}/train`, { method: 'POST' });
-      if (res.ok) {
-        await fetchStats();
-        await fetchResults();
-        await fetchUploadStats();
-        alert('Model retrained successfully!');
-      } else {
-        const d = await res.json();
+      const token = getToken();
+      const res = await fetch(`${BACKEND_URL}/train-stream`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
         alert(d.detail || 'Training failed.');
+        setTraining(false);
+        return;
+      }
+      
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); 
+        
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line);
+            if (data.type === 'log') {
+              setTrainLogs(prev => [...prev, data.message]);
+              // Update progress based on steps
+              if (data.message.includes('[STEP 1/3]')) setTrainProgress(20);
+              else if (data.message.includes('[STEP 2/3]')) setTrainProgress(50);
+              else if (data.message.includes('[STEP 3/3]')) setTrainProgress(80);
+              else if (data.message.includes('DONE -- MODEL UPDATED SUCCESSFULLY')) setTrainProgress(100);
+            } else if (data.type === 'result') {
+              if (data.success) {
+                await fetchStats();
+                await fetchResults();
+                await fetchUploadStats();
+                setTrainProgress(100);
+                setTimeout(() => alert('Model retrained successfully!'), 500);
+              } else {
+                alert(data.message || 'Training failed.');
+              }
+            }
+          } catch (e) {
+            console.error('Parse error on streaming line', e);
+          }
+        }
       }
     } catch {
       alert('Cannot connect to backend.');
@@ -193,15 +250,19 @@ const AnalysisAdmin = () => {
   const handleCorrect = async (filename, correctedLabel) => {
     setCorrectingFile(filename);
     try {
+      const token = getToken();
       const res = await fetch(`${BACKEND_URL}/correct-prediction`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ filename, corrected_label: correctedLabel }),
       });
       if (res.ok) {
         await fetchResults();
         await fetchUploadStats();
-        alert(`Corrected ${filename} classification to ${correctedLabel} and added to DB.`);
+        alert(`Marked ${filename} as ${correctedLabel} and saved to DB. Click 'Retrain Model' to update the classifier.`);
       } else {
         const d = await res.json();
         alert(d.detail || 'Correction failed.');
@@ -393,11 +454,51 @@ const AnalysisAdmin = () => {
               disabled={training}
               className="px-md py-sm rounded bg-primary text-on-primary font-label-md hover:opacity-90 transition-opacity flex items-center gap-xs cursor-pointer disabled:opacity-60"
             >
-              <span className="material-symbols-outlined text-[18px]">{training ? 'hourglass_empty' : 'model_training'}</span>
+              <span className="material-symbols-outlined text-[18px]">
+                {training ? 'hourglass_empty' : 'model_training'}
+              </span>
               {training ? 'Training…' : 'Retrain Model'}
             </button>
           </div>
         </header>
+
+        {/* Terminal Window during training */}
+        {(training || trainLogs.length > 0) && (
+          <section className="bg-[#1e1e1e] rounded-xl overflow-hidden shadow-lg border border-surface-variant flex flex-col mt-2">
+            <div className="bg-[#2d2d2d] px-md py-sm flex justify-between items-center border-b border-[#404040]">
+              <div className="flex items-center gap-xs">
+                <span className="material-symbols-outlined text-[16px] text-gray-400">terminal</span>
+                <span className="font-label-md text-label-md text-gray-300">Training Pipeline Logs</span>
+              </div>
+              {training && <span className="material-symbols-outlined text-[16px] text-primary animate-spin">sync</span>}
+              {!training && <button onClick={() => setTrainLogs([])} className="text-xs text-gray-400 hover:text-white cursor-pointer">Clear</button>}
+            </div>
+            
+            {/* Progress bar inside terminal header */}
+            {training && (
+              <div className="w-full h-1 bg-[#1a1a1a]">
+                <div 
+                  className="h-full bg-primary transition-all duration-300 ease-out"
+                  style={{ width: `${Math.max(2, trainProgress)}%` }}
+                />
+              </div>
+            )}
+            
+            <div 
+              ref={terminalRef}
+              className="p-md h-[300px] overflow-y-auto font-mono text-[13px] text-gray-300 whitespace-pre-wrap flex flex-col gap-1"
+            >
+              {trainLogs.map((log, i) => (
+                <div key={i}>{log}</div>
+              ))}
+              {training && (
+                <div className="animate-pulse flex items-center h-5 mt-1">
+                  <span className="inline-block w-2 h-4 bg-gray-500"></span>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Dashboard Overview Cards */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-md">

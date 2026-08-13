@@ -10,7 +10,7 @@ import PasswordField from './PasswordField';
  * It overlays whatever is behind it; the page stays mounted underneath.
  */
 const AuthModal = () => {
-  const { authModal, closeAuth, signIn, signUp, addNotification } = useApp();
+  const { authModal, closeAuth, signIn, signUp, addNotification, user } = useApp();
   // Guard against a malformed authModal object so the modal never crashes.
   const { open, mode } = authModal || { open: false, mode: 'login' };
 
@@ -22,6 +22,10 @@ const AuthModal = () => {
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
   const mounted = useRef(true);
+
+  const safeClose = () => {
+    if (user) closeAuth();
+  };
 
   // Track mount so async resolves after unmount don't trigger setState warnings.
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -35,17 +39,17 @@ const AuthModal = () => {
     }
   }, [open, mode]);
 
-  // Close on Escape.
+  // Close on Escape (only if user is already authenticated).
   useEffect(() => {
     if (!open) return;
-    const onKey = (e) => { if (e.key === 'Escape') closeAuth(); };
+    const onKey = (e) => { if (e.key === 'Escape') safeClose(); };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [open, closeAuth]);
+  }, [open, user]);
 
   if (!open) return null;
 
@@ -77,7 +81,7 @@ const AuthModal = () => {
   return (
     // Full-screen dimmed backdrop, content centered.
     <div
-      onClick={closeAuth}
+      onClick={safeClose}
       style={{
         position: 'fixed', inset: 0, zIndex: 999,
         background: 'rgba(15, 22, 18, 0.55)',
@@ -102,17 +106,19 @@ const AuthModal = () => {
           overflowY: 'auto',
         }}
       >
-        <button
-          onClick={closeAuth}
-          title="Close"
-          style={{
-            position: 'absolute', top: '16px', right: '16px',
-            border: 'none', background: 'transparent', cursor: 'pointer',
-            color: 'var(--color-secondary, #777)', padding: '4px', borderRadius: '8px',
-          }}
-        >
-          <span className="material-symbols-outlined">close</span>
-        </button>
+        {user && (
+          <button
+            onClick={safeClose}
+            title="Close"
+            style={{
+              position: 'absolute', top: '16px', right: '16px',
+              border: 'none', background: 'transparent', cursor: 'pointer',
+              color: 'var(--color-secondary, #777)', padding: '4px', borderRadius: '8px',
+            }}
+          >
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        )}
 
         <div className="flex flex-col justify-center flex-1">
           <div className="flex flex-col items-center text-center mb-md">

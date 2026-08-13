@@ -3,7 +3,7 @@ import math
 
 import numpy as np
 from PIL import Image, ImageFilter, ImageEnhance, ImageDraw
-import cv2  # OpenCV — already available via scikit-image dependency chain
+import cv2  # OpenCV - already available via scikit-image dependency chain
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -11,12 +11,12 @@ import cv2  # OpenCV — already available via scikit-image dependency chain
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _pil_to_np(img: Image.Image) -> np.ndarray:
-    """Convert PIL Image (RGB) → float32 numpy array in [0, 1]."""
+    """Convert PIL Image (RGB) -> float32 numpy array in [0, 1]."""
     return np.asarray(img, dtype=np.float32) / 255.0
 
 
 def _np_to_pil(arr: np.ndarray) -> Image.Image:
-    """Convert float32 numpy array in [0, 1] → PIL Image (RGB, uint8)."""
+    """Convert float32 numpy array in [0, 1] -> PIL Image (RGB, uint8)."""
     clipped = np.clip(arr, 0.0, 1.0)
     return Image.fromarray((clipped * 255).astype(np.uint8), mode="RGB")
 
@@ -77,11 +77,11 @@ class PolarizingFilterSimulation:
         hue_row = hue_sweep[np.newaxis, :] / 360.0          # shape (1, W)
         hue_full = np.tile(hue_row, (h, 1))                  # shape (H, W)
 
-        # Full saturation, high value → vivid spectral colors
+        # Full saturation, high value -> vivid spectral colors
         saturation = np.ones((h, w), dtype=np.float32)
         value      = np.ones((h, w), dtype=np.float32)
 
-        # Stack and convert HSV→RGB via OpenCV
+        # Stack and convert HSV->RGB via OpenCV
         hsv = np.stack([hue_full * 179, saturation * 255, value * 255], axis=2).astype(np.uint8)
         rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB).astype(np.float32) / 255.0
         return rgb
@@ -192,14 +192,14 @@ class NarrowBandpassFilterSimulation:
         # Smoothly ramp background to black (not a hard cut, preserves gradients)
         suppress_factor = np.where(
             background_mask,
-            (band_clahe.astype(np.float32) / max(threshold, 1.0)) * 0.1,  # → near 0
+            (band_clahe.astype(np.float32) / max(threshold, 1.0)) * 0.1,  # -> near 0
             1.0,
         ).astype(np.float32)
         band_filtered = (band_clahe.astype(np.float32) * suppress_factor).clip(0, 255).astype(np.uint8)
 
         # ── 4. Reconstruct RGB with bandpass tint ─────────────────────────────
-        # Selected channel → full brightness
-        # Other two channels → small leak (simulates real filter bleed ~10-20%)
+        # Selected channel -> full brightness
+        # Other two channels -> small leak (simulates real filter bleed ~10-20%)
         result = np.zeros_like(arr_u8, dtype=np.float32)
         for i in range(3):
             if i == ch_idx:
@@ -368,7 +368,7 @@ def build_augmented_transform(training: bool = True):
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.RandomVerticalFlip(p=0.3),
         transforms.RandomRotation(degrees=15),
-        # Slight perspective warp — simulates camera/lens tilt
+        # Slight perspective warp - simulates camera/lens tilt
         transforms.RandomPerspective(distortion_scale=0.2, p=0.3),
 
         # ── Colour / lighting jitter ──────────────────────────────────────────
@@ -376,7 +376,7 @@ def build_augmented_transform(training: bool = True):
         transforms.RandomGrayscale(p=0.05),
 
         # ── Physics-informed optical filter simulations ────────────────────────
-        # Applied independently — any combination (or none) can fire on each sample.
+        # Applied independently - any combination (or none) can fire on each sample.
 
         # 1. Polarizing filter: spectral birefringence glow around cracks
         PolarizingFilterSimulation(

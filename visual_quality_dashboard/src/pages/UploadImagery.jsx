@@ -1,7 +1,6 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-
-const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { BACKEND_URL } from '../backend';
 
 const UploadImagery = () => {
   const { addNotification, queue, setQueue } = useApp();
@@ -122,6 +121,7 @@ const UploadImagery = () => {
     const map = {
       uploading: { label: 'Uploading…', cls: 'bg-yellow-100 text-yellow-800' },
       queued:    { label: 'Queued',     cls: 'bg-blue-100 text-blue-800' },
+      classified:{ label: 'Classified', cls: 'bg-green-100 text-green-800' },
       error:     { label: 'Error',      cls: 'bg-red-100 text-red-800' },
     };
     const s = map[status] || { label: status, cls: 'bg-gray-100 text-gray-800' };

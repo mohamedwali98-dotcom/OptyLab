@@ -12,6 +12,8 @@ BASE_DIR    = Path(__file__).resolve().parent
 DB_DIR      = BASE_DIR.parent.parent / "DB"
 GOOD_DIR    = DB_DIR / "Good"
 DAMAGED_DIR = DB_DIR / "Damaged"
+RAW_GOOD_DIR = DB_DIR / "RawImagesGood"
+RAW_DAMAGED_DIR = DB_DIR / "RawImagesDamaged"
 MODEL_DIR   = BASE_DIR / "model"
 STATS_PATH  = MODEL_DIR / "stats.json"
 # Damage-localization overlays live in their own folder, a sibling of `uploads/`.
@@ -29,9 +31,17 @@ def load_image_paths():
             continue
         files = [f for f in folder.iterdir() if f.suffix.lower() in VALID]
         for f in files:
+            # Skip corrupt/undecodable files so they can't crash training later
+            try:
+                with Image.open(f) as im:
+                    im.verify()
+            except Exception:
+                print(f"[WARN] Skipping unreadable image: {f.name}")
+                continue
             paths.append(f)
             labels.append(label)
     return paths, labels
+
 
 # ── PyTorch Dataset & Transforms ─────────────────────────────────────────────
 class ImageDataset(Dataset):

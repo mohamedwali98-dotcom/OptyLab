@@ -10,19 +10,21 @@ def cleanup_cache():
     print("[Orchestrator] Cleaning up uploads folder and results...")
     backend_dir = os.path.join(os.path.dirname(__file__), "backend")
     uploads_dir = os.path.join(backend_dir, "uploads")
+    heatmaps_dir = os.path.join(backend_dir, "heatmaps")
     results_file = os.path.join(backend_dir, "results.json")
     
-    # Clear uploads folder
-    if os.path.exists(uploads_dir):
-        for filename in os.listdir(uploads_dir):
-            file_path = os.path.join(uploads_dir, filename)
-            try:
-                if os.path.isfile(file_path) or os.path.islink(file_path):
-                    os.unlink(file_path)
-                elif os.path.isdir(file_path):
-                    shutil.rmtree(file_path)
-            except Exception as e:
-                print(f"[Orchestrator] Failed to delete {file_path}. Reason: {e}")
+    # Clear folders
+    for target_dir in [uploads_dir, heatmaps_dir]:
+        if os.path.exists(target_dir):
+            for filename in os.listdir(target_dir):
+                file_path = os.path.join(target_dir, filename)
+                try:
+                    if os.path.isfile(file_path) or os.path.islink(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                except Exception as e:
+                    print(f"[Orchestrator] Failed to delete {file_path}. Reason: {e}")
                 
     # Clear results.json
     if os.path.exists(results_file):
@@ -37,7 +39,19 @@ def run_backend():
     backend_dir = os.path.join(os.path.dirname(__file__), "backend")
 
     # Install requirements using the correct Python
-    subprocess.run([PYTHON, "-m", "pip", "install", "-r", "requirements.txt"], cwd=backend_dir)
+    # Use --no-cache-dir and --disable-pip-version-check to speed up and avoid issues
+    result = subprocess.run(
+        [PYTHON, "-m", "pip", "install", "-r", "requirements.txt", "--no-cache-dir", "--disable-pip-version-check"],
+        cwd=backend_dir,
+        capture_output=True,
+        text=True,
+        timeout=300  # 5 minute timeout
+    )
+    if result.returncode != 0:
+        print(f"[Backend] Warning: pip install had issues (return code {result.returncode})")
+        print(f"[Backend] stderr: {result.stderr[-1000:] if result.stderr else 'None'}")
+    else:
+        print("[Backend] Requirements installed successfully.")
 
     print("[Backend] Starting FastAPI server on port 8000...")
     process = subprocess.Popen(

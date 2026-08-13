@@ -11,6 +11,8 @@ import AnalysisResults from './pages/AnalysisResults'
 import AccessControl from './pages/AccessControl'
 import './index.css'
 
+import ErrorBoundary from './components/ErrorBoundary'
+
 // Gate: shows the full-screen sign-in modal and BLOCKS the protected page until
 // the user is authenticated. We must not call setState during render (that
 // white-screens the app), so the modal is opened via an effect and the page
@@ -69,15 +71,29 @@ const AnimatedRoutes = () => {
 // THIS component (which always renders) rather than a gated route, otherwise a
 // signed-out user would see a blank screen.
 function Shell() {
-  const { user, authLoading, openAuth } = useApp();
+  const { user, authLoading, openAuth, authModal } = useApp();
 
-  // Open the sign-in modal as soon as we know there's no session.
+  // Open the sign-in modal as soon as we know there's no session or if modal got closed while signed out.
   useEffect(() => {
-    if (!authLoading && !user) openAuth('login');
-  }, [authLoading, user, openAuth]);
+    if (!authLoading && !user && (!authModal || !authModal.open)) {
+      openAuth('login');
+    }
+  }, [authLoading, user, authModal, openAuth]);
 
-  // While the session is still loading, show nothing (avoids a flash).
-  if (authLoading) return null;
+  // While the session is still loading, show a clean loading indicator (avoids a flash).
+  if (authLoading) {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--color-surface, #f8f9fa)'
+      }}>
+        <div style={{ textAlign: 'center', color: 'var(--color-secondary, #777)' }}>
+          <span className="material-symbols-outlined text-[36px] animate-spin mb-2 block">progress_activity</span>
+          Loading session…
+        </div>
+      </div>
+    );
+  }
 
   const signedOut = !user;
 
@@ -103,9 +119,11 @@ function Shell() {
 
 function App() {
   return (
-    <AppProvider>
-      <Shell />
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <Shell />
+      </AppProvider>
+    </ErrorBoundary>
   );
 }
 

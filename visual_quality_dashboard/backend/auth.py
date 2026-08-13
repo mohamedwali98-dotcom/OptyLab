@@ -3,7 +3,7 @@ auth.py
 =======
 Self-contained authentication + authorization for the OptyLab dashboard.
 
-Design goals (no new pip dependencies — stdlib only):
+Design goals (no new pip dependencies - stdlib only):
   * User accounts with email + password, stored safely (PBKDF2-HMAC-SHA256).
   * A DB of "allowed admin emails". The Admin tab is only visible/usable
     for emails that have been granted access here (the "sheet" page).
@@ -12,9 +12,9 @@ Design goals (no new pip dependencies — stdlib only):
   * A per-user login/activity history (kept to the most recent 20 entries).
 
 Tables (SQLite, file: auth.db next to this module):
-  users           — id, email (unique), name, pw_hash, created_at
-  admin_access    — email (unique, lowercase), granted_by, granted_at
-  login_history   — id, user_id, email, ts, ip, action
+  users           - id, email (unique), name, pw_hash, created_at
+  admin_access    - email (unique, lowercase), granted_by, granted_at
+  login_history   - id, user_id, email, ts, ip, action
 """
 
 import os

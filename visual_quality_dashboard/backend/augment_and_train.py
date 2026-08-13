@@ -3,16 +3,16 @@ augment_and_train.py
 ====================
 One-shot pipeline for OptyLab:
 
-  Step 1 — Augment
+  Step 1 - Augment
     Reads every image from  DB/RawImagesDamaged/
     Applies the physics-informed augmentation pipeline
     (PolarizingFilter + NarrowBandpass + Moire + standard flips/jitter)
     Writes N augmented copies per image into  DB/Damaged/
 
-  Step 2 — (Optional) Augment Good
+  Step 2 - (Optional) Augment Good
     If DB/RawImagesGood/ has images, augments those into DB/Good/ too.
 
-  Step 3 — Train
+  Step 3 - Train
     Trains the full ensemble (SVM + CNN + ViT) on
     DB/Good/ + DB/Damaged/  and saves the updated model files.
 
@@ -31,12 +31,12 @@ import sys
 import random
 from pathlib import Path
 
-# ── Make sure we can import sibling modules regardless of cwd ─────────────────
+# Make sure we can import sibling modules regardless of cwd
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
+# Paths
 DB_DIR          = BACKEND_DIR.parent.parent / "DB"
 RAW_DAMAGED_DIR = DB_DIR / "RawImagesDamaged"
 RAW_GOOD_DIR    = DB_DIR / "RawImagesGood"
@@ -49,7 +49,7 @@ AUG_PER_IMAGE = int(os.environ.get("AUG_PER_IMAGE", 10))
 
 
 # =============================================================================
-# STEP 1 & 2 — AUGMENTATION
+# STEP 1 & 2 -- AUGMENTATION
 # =============================================================================
 
 def _build_pil_pipeline():
@@ -143,7 +143,6 @@ def _build_pil_pipeline():
 
     return apply_all
 
-
 def augment_folder(src_dir: Path, dst_dir: Path, n_per_image: int, label: str) -> int:
     """
     For every image in src_dir generate n_per_image augmented copies in dst_dir.
@@ -180,19 +179,17 @@ def augment_folder(src_dir: Path, dst_dir: Path, n_per_image: int, label: str) -
             aug.save(out_path, "JPEG", quality=92)
             total   += 1
 
-        print(f"  ✓  {src.name}  →  {n_per_image} copies")
+        print(f"  [+] {src.name} -> {n_per_image} copies")
 
     return total
 
-
 # =============================================================================
-# STEP 3 — TRAINING
+# STEP 3 -- TRAINING
 # =============================================================================
 
 def run_training() -> dict:
     from classifier import train_and_evaluate
     return train_and_evaluate()
-
 
 # =============================================================================
 # MAIN
@@ -201,10 +198,10 @@ def run_training() -> dict:
 def main():
     print()
     print("=" * 65)
-    print("  OptyLab — Augment & Train Pipeline")
+    print("  OptyLab -- Augment & Train Pipeline")
     print("=" * 65)
 
-    # ── Step 1: Augment Damaged ───────────────────────────────────────────────
+    # Step 1: Augment Damaged
     print(f"\n[STEP 1/3]  Augmenting DAMAGED images  "
           f"({AUG_PER_IMAGE} copies per source image)")
     print(f"  Source : {RAW_DAMAGED_DIR}")
@@ -215,9 +212,9 @@ def main():
         sys.exit(1)
 
     n_damaged = augment_folder(RAW_DAMAGED_DIR, DAMAGED_DIR, AUG_PER_IMAGE, "Damaged")
-    print(f"\n  → {n_damaged} Damaged augmented images written.\n")
+    print(f"\n  -> {n_damaged} Damaged augmented images written.\n")
 
-    # ── Step 2: Augment Good (if raw source exists) ───────────────────────────
+    # Step 2: Augment Good (if raw source exists)
     if RAW_GOOD_DIR.exists():
         raw_good = [f for f in RAW_GOOD_DIR.iterdir() if f.suffix.lower() in VALID_EXTS]
         if raw_good:
@@ -226,21 +223,21 @@ def main():
             print(f"  Source : {RAW_GOOD_DIR}")
             print(f"  Output : {GOOD_DIR}")
             n_good = augment_folder(RAW_GOOD_DIR, GOOD_DIR, AUG_PER_IMAGE, "Good")
-            print(f"\n  → {n_good} Good augmented images written.\n")
+            print(f"\n  -> {n_good} Good augmented images written.\n")
         else:
             existing = len([f for f in GOOD_DIR.iterdir()
                             if f.suffix.lower() in VALID_EXTS]) if GOOD_DIR.exists() else 0
-            print(f"[STEP 2/3]  RawImagesGood is empty — "
+            print(f"[STEP 2/3]  RawImagesGood is empty -- "
                   f"using {existing} existing Good images.\n")
     else:
         existing = len([f for f in GOOD_DIR.iterdir()
                         if f.suffix.lower() in VALID_EXTS]) if GOOD_DIR.exists() else 0
-        print(f"[STEP 2/3]  No RawImagesGood folder — "
+        print(f"[STEP 2/3]  No RawImagesGood folder -- "
               f"using {existing} existing Good images.\n")
 
-    # ── Step 3: Train ─────────────────────────────────────────────────────────
-    print("[STEP 3/3]  Training ensemble model (SVM + CNN + ViT)…")
-    print("  This may take several minutes. Please wait…\n")
+    # Step 3: Train
+    print("[STEP 3/3]  Training ensemble model (SVM + CNN + ViT)...")
+    print("  This may take several minutes. Please wait...\n")
 
     try:
         stats = run_training()
@@ -248,7 +245,7 @@ def main():
         print(f"\n  [ERROR] Training failed: {exc}")
         sys.exit(1)
 
-    # ── Print summary ─────────────────────────────────────────────────────────
+    # Print summary
     model_accs = stats.get("model_accuracies", [])
     svm_acc = f"{model_accs[0]:.2%}" if len(model_accs) > 0 else "N/A"
     cnn_acc = f"{model_accs[1]:.2%}" if len(model_accs) > 1 else "N/A"
@@ -256,7 +253,7 @@ def main():
 
     print()
     print("=" * 65)
-    print("  DONE — MODEL UPDATED SUCCESSFULLY")
+    print("  DONE -- MODEL UPDATED SUCCESSFULLY")
     print("=" * 65)
     print(f"  Training data  :  {stats['n_good']} Good  |  {stats['n_damaged']} Damaged")
     print(f"  Mean Accuracy  :  {stats['mean_accuracy']:.2%}")
@@ -267,11 +264,10 @@ def main():
     print(f"  CNN Accuracy   :  {cnn_acc}")
     print(f"  ViT Accuracy   :  {vit_acc}")
     print()
-    print(f"  Model files    →  {BACKEND_DIR / 'model'}/")
-    print(f"  Stats file     →  {BACKEND_DIR / 'model' / 'stats.json'}")
+    print(f"  Model files    ->  {BACKEND_DIR / 'model'}/")
+    print(f"  Stats file     ->  {BACKEND_DIR / 'model' / 'stats.json'}")
     print("=" * 65)
     print()
-
 
 if __name__ == "__main__":
     main()

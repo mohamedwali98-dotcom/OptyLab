@@ -1,5 +1,5 @@
 """
-gradcam.py — damage localization for the OptyLab lens classifier.
+gradcam.py - damage localization for the OptyLab lens classifier.
 
 Produces a Grad-CAM heatmap from the trained ResNet18 CNN, highlighting the
 image regions the model uses for its prediction. We explain the PREDICTED
@@ -8,7 +8,7 @@ if the lens is classified "Damaged", the hot region is where the model saw the
 defect; if "Good", the hot region is what it read as clean.
 
 The heatmap is blended over the ORIGINAL image with a jet-style colormap
-(blue→cyan→yellow→red, hottest = red) and the hottest connected region is
+(blue->cyan->yellow->red, hottest = red) and the hottest connected region is
 outlined with a red bounding box so the operator can spot the damage at a glance.
 
 No new pip deps: torch / torchvision / numpy / PIL only.
@@ -155,7 +155,7 @@ def generate_damage_overlay(model, img_path: Path, predicted_class: int = 1,
             radius=max(3, min(img_pil.size) // 80)))
         cam_arr = np.array(cam_img, dtype=np.float32) / 255.0
 
-        # Vectorized jet-style colormap (blue→cyan→yellow→red), no per-pixel loop.
+        # Vectorized jet-style colormap (blue->cyan->yellow->red), no per-pixel loop.
         t = cam_arr
         r = np.clip(1.5 - np.abs(4 * t - 3), 0, 1)
         g = np.clip(1.5 - np.abs(4 * t - 2), 0, 1)
@@ -186,7 +186,7 @@ def generate_damage_overlay(model, img_path: Path, predicted_class: int = 1,
             cx, cy, rx, ry = (x1 + x2) / 2, (y1 + y2) / 2, (x2 - x1) / 2, (y2 - y1) / 2
         else:
             cx, cy, rx, ry = ellipse
-            # Map from overlay (full) res → original image res.
+            # Map from overlay (full) res -> original image res.
             sx, sy = ow / cam_arr.shape[1], oh / cam_arr.shape[0]
             cx, cy = cx * sx, cy * sy
             rx, ry = rx * sx, ry * sy

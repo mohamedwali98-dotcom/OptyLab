@@ -6,6 +6,7 @@ from skimage.feature import hog
 from sklearn.svm import SVC
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import accuracy_score
 from classifier_utils import MODEL_DIR
 
@@ -42,9 +43,14 @@ def train_svm(paths, labels):
     X_svm = np.array(X_svm)
     y_svm = np.array(y_svm)
 
+    # Use CalibratedClassifierCV instead of deprecated probability=True
+    # This provides probability estimates while being forward-compatible
     svm_pipeline = Pipeline([
         ("scaler", StandardScaler()),
-        ("svm", SVC(kernel="rbf", probability=True, C=5.0, gamma="scale")),
+        ("svm", CalibratedClassifierCV(
+            SVC(kernel="rbf", C=5.0, gamma="scale"),
+            ensemble=False
+        )),
     ])
     svm_pipeline.fit(X_svm, y_svm)
     joblib.dump(svm_pipeline, MODEL_PATH_SVM)

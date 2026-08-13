@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { api, getToken, setToken, clearToken } from '../api';
+import { api, getToken, setToken, clearToken, onUnauthorized } from '../api';
+import { BACKEND_URL } from '../backend';
 
 const AppContext = createContext(null);
 
@@ -38,6 +39,16 @@ export const AppProvider = ({ children }) => {
   const openAccount  = useCallback(() => setAccountOpen(true), []);
   const closeAccount = useCallback(() => setAccountOpen(false), []);
 
+  // Clear backend state (uploads, results, heatmaps) - called on project launch, sign in, sign out
+  const clearBackendState = useCallback(async () => {
+    try {
+      await fetch(`${BACKEND_URL}/clear-uploads`, { method: 'DELETE' });
+    } catch (e) {
+      // Ignore errors - backend might be offline
+      console.warn('Could not clear backend state:', e);
+    }
+  }, []);
+
   const applySession = useCallback((payload) => {
     setUser(payload.user);
     setAdminAccess(!!payload.admin_access);
@@ -45,32 +56,54 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   const signIn = useCallback(async (email, password) => {
+    // Clear backend state on sign in to ensure clean slate
+    await clearBackendState();
     const data = await api.login(email, password);
     applySession(data);
     closeAuth();
     return data;
-  }, [applySession, closeAuth]);
+  }, [applySession, closeAuth, clearBackendState]);
 
   const signUp = useCallback(async (email, name, password) => {
+    // Clear backend state on sign up to ensure clean slate
+    await clearBackendState();
     const data = await api.register(email, name, password);
     applySession(data);
     closeAuth();
     return data;
-  }, [applySession, closeAuth]);
+  }, [applySession, closeAuth, clearBackendState]);
 
-  const signOut = useCallback(() => {
+  const signOut = useCallback(async () => {
+    try {
+      await api.clearUploads();
+    } catch (e) {
+      // Backend error or offline — ignore so logout is never blocked
+    }
+    // Also clear backend state on sign out to ensure clean slate for next user
+    await clearBackendState();
     clearToken();
     setUser(null);
     setAdminAccess(false);
-    // Reset transient UI state so the next sign-in starts from a clean slate
-    // (no leftover modal/account windows or stale auth-modal fields).
-    setAuthModal({ open: false, mode: 'login' });
+    setQueue([]);
     setAccountOpen(false);
-  }, []);
+    setAuthModal({ open: true, mode: 'login' });
+  }, [clearBackendState]);
+
+  // Listen for automatic 401 unauthorized signals from api.js
+  useEffect(() => {
+    onUnauthorized(() => {
+      signOut();
+    });
+  }, [signOut]);
 
   // On mount, restore a session from a stored token (if still valid).
+  // Also clear backend state on project launch to ensure clean slate.
   useEffect(() => {
     let cancelled = false;
+    
+    // Clear backend state on project launch (first load)
+    clearBackendState();
+    
     const token = getToken();
     if (!token) { setAuthLoading(false); return; }
     api.me()
@@ -78,7 +111,7 @@ export const AppProvider = ({ children }) => {
       .catch(() => { if (!cancelled) clearToken(); })
       .finally(() => { if (!cancelled) setAuthLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [clearBackendState]);
 
   // Clear the transfer queue when the signed-in identity changes (sign-out /
   // sign-in to a different account). This does NOT fire on plain navigation

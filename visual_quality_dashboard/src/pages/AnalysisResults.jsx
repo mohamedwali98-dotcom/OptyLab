@@ -3,10 +3,11 @@ import { useApp } from '../context/AppContext';
 import { BACKEND_URL } from '../backend';
 
 const AnalysisResults = () => {
-  const { addNotification, settings } = useApp();
+  const { addNotification, settings, setQueue } = useApp();
   const [results, setResults]       = useState([]);
   const [loading, setLoading]       = useState(true);
   const [classifying, setClassifying] = useState(false);
+  const [classifyProgress, setClassifyProgress] = useState(null);
   const [error, setError]           = useState(null);
   const [lightbox, setLightbox]     = useState(null);
   const [sortKey, setSortKey]       = useState(null);   // column key to sort by
@@ -127,6 +128,13 @@ const AnalysisResults = () => {
 
   useEffect(() => { fetchResults(); }, []);
 
+  // Re-fetch when the window is focused (e.g. user clears uploads on another page then comes back)
+  useEffect(() => {
+    const onFocus = () => fetchResults();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, []);
+
   // Auto-refresh polling
   useEffect(() => {
     if (!settings.autoRefresh) return;
@@ -166,24 +174,61 @@ const AnalysisResults = () => {
 
   const handleClassify = async () => {
     setClassifying(true);
+    setClassifyProgress({ current: 0, total: 1, text: 'Initializing...' });
+    
     try {
-      const res = await fetch(`${BACKEND_URL}/classify`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        await fetchResults();
-        const mode = data.mode === 'mock' ? ' (mock mode — no model trained)' : '';
-        addNotification('success', `Classification complete: ${data.count} image${data.count !== 1 ? 's' : ''} processed${mode}.`);
-      } else {
-        const data = await res.json();
+      const res = await fetch(`${BACKEND_URL}/classify-stream`, { method: 'POST' });
+      
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
         const msg = data.detail || 'Classification failed.';
         alert(msg);
         addNotification('error', `Classification failed: ${msg}`);
+        setClassifying(false);
+        setClassifyProgress(null);
+        return;
+      }
+      
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep the last incomplete line in buffer
+        
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line);
+            if (data.type === 'progress') {
+              setClassifyProgress({ current: data.progress, total: data.total, text: data.current });
+            } else if (data.type === 'result') {
+              if (data.mode) {
+                await fetchResults();
+                const mode = data.mode === 'mock' ? ' (mock mode — no model trained)' : '';
+                addNotification('success', `Classification complete: ${data.count} image${data.count !== 1 ? 's' : ''} processed${mode}.`);
+                // Mark items in the transfer queue as classified
+                setQueue(prev => prev.map(item => item.status === 'queued' ? { ...item, status: 'classified' } : item));
+              } else {
+                 addNotification('error', data.message || 'Classification failed.');
+              }
+            }
+          } catch (e) {
+            console.error('Parse error on streaming line', e);
+          }
+        }
       }
     } catch {
       alert('Cannot connect to backend.');
       addNotification('error', 'Classification failed — backend is offline.');
     } finally {
       setClassifying(false);
+      setClassifyProgress(null);
     }
   };
 
@@ -361,6 +406,26 @@ const AnalysisResults = () => {
             </button>
           </div>
         </div>
+        
+        {classifyProgress && (
+          <div className="mb-margin bg-surface-container-low p-md rounded-xl border border-surface-variant shadow-sm animate-scaleIn origin-top">
+            <div className="flex justify-between items-center mb-sm">
+              <span className="font-label-md text-label-md text-on-surface">Classifying images...</span>
+              <span className="font-label-sm text-label-sm text-primary">
+                {classifyProgress.current} / {classifyProgress.total}
+              </span>
+            </div>
+            <div className="w-full h-2 bg-surface-variant rounded-full overflow-hidden mb-xs">
+              <div 
+                className="h-full bg-primary transition-all duration-300 ease-out rounded-full" 
+                style={{ width: `${Math.max(5, (classifyProgress.current / Math.max(1, classifyProgress.total)) * 100)}%` }} 
+              />
+            </div>
+            <div className="font-body-xs text-body-xs text-secondary truncate">
+              {classifyProgress.text}
+            </div>
+          </div>
+        )}
 
         {/* Table Card */}
         <div className="bg-surface-container-lowest border border-surface-variant rounded-xl shadow-sm" style={{ overflow: 'clip' }}>

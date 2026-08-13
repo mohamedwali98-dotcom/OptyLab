@@ -60,13 +60,6 @@ docker run --rm \
 # ./visual_quality_dashboard/docker/augment_train.sh
 ```
 
-**Environment Variables:**
-- `AUG_PER_IMAGE`: Number of augmented copies per source image (default: 10)
-
-**Volumes Mounted:**
-- DB data: `OptyLab/DB` → `/app/DB` (image data)
-- Model: `visual_quality_dashboard/backend/model` → `/app/model` (trained models)
-
 ### 3. run_all (Full Stack Orchestration)
 **Purpose:** Run both frontend and backend together in a single container.
 
@@ -97,23 +90,6 @@ docker run -d --name optylab_run_all \
 **Ports:**
 - `8080` (HTTP) - Frontend
 - `8000` (HTTP) - Backend API
-
-## Quick Reference Table
-
-| Image | Tag | Ports | Volumes |
-|-------|-----|-------|---------|
-| frontend (compose) | optylab/frontend:latest | 8080 | DB/, models/ |
-| augment_train | optylab/augment_train:latest | - | DB/, model/ |
-| run_all | optylab/run_all:latest | 8080, 8000 | DB/, model/ |
-
-## Data Volumes
-
-The Docker images mount the following host directories:
-
-| Host Path | Container Path | Purpose |
-|-----------|----------------|---------|
-| `OptyLab/DB/` | `/app/DB` | Image database (Good/Damaged/RawImagesGood/RawImagesDamaged) |
-| `visual_quality_dashboard/backend/model/` | `/app/model` | Trained model weights (.pth, .pkl files, stats.json) |
 
 ## Common Commands
 

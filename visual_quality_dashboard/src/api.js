@@ -32,6 +32,12 @@ class ApiError extends Error {
   }
 }
 
+let onUnauthorizedCallback = null;
+
+export function onUnauthorized(cb) {
+  onUnauthorizedCallback = cb;
+}
+
 async function request(method, path, body) {
   const headers = {};
   const token = getToken();
@@ -56,6 +62,10 @@ async function request(method, path, body) {
   }
 
   if (!res.ok) {
+    if (res.status === 401 && path !== '/auth/login' && path !== '/auth/register') {
+      clearToken();
+      if (onUnauthorizedCallback) onUnauthorizedCallback();
+    }
     const detail = (data && data.detail) || `Request failed (${res.status})`;
     throw new ApiError(detail, res.status, data);
   }
@@ -73,6 +83,7 @@ export const api = {
   adminAccessList: ()               => request('GET',  '/auth/admin-access'),
   grantAccess:  (email)             => request('POST', '/auth/admin-access', { email }),
   revokeAccess: (email)             => request('DELETE', '/auth/admin-access', { email }),
+  clearUploads: ()                  => request('DELETE', '/clear-uploads'),
 };
 
 export { ApiError };

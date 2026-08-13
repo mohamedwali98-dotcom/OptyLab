@@ -8,6 +8,7 @@ import os
 import uuid
 import random
 import shutil
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -22,11 +23,12 @@ except Exception:
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from classifier import train_and_evaluate, load_models, classify_image
-from classifier_utils import STATS_PATH, MODEL_DIR, GOOD_DIR, DAMAGED_DIR, HEATMAPS_DIR
+from classifier import train_and_evaluate, load_models, classify_image, classify_group_with_consensus
+from classifier_utils import STATS_PATH, MODEL_DIR, GOOD_DIR, DAMAGED_DIR, HEATMAPS_DIR, RAW_GOOD_DIR, RAW_DAMAGED_DIR
+from augmentation import parse_group_id
 import auth
 from auth import (  # noqa: F401  (re-exported names referenced by endpoints)
     init_db, create_user, authenticate, get_user_by_id, change_password,
@@ -245,111 +247,23 @@ def get_queue():
         if f.is_file()
         and f.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp"}
         # Damage-localization overlays (`<stem>__heatmap.png`) are NOT queue
-        # items — they belong in the separate heatmaps/ folder, so exclude them.
+        # items - they belong in the separate heatmaps/ folder, so exclude them.
         and not f.name.endswith("__heatmap.png")
     ]
     return {"queue": pending}
-
-
-def _image_derived_confidence(img_path: Path) -> tuple[str, float, float, float]:
-    """
-    Compute real, image-derived signals to estimate quality confidence.
-    Used as a fallback when no trained model is available.
-
-    Returns (prediction, conf_svm_proxy, conf_cnn_proxy, conf_vit_proxy).
-
-    The three "model" scores are computed from distinct but complementary
-    low-level image features so that each column in the dashboard reflects
-    something genuinely different about the image:
-
-      SVM-proxy  -> HOG feature energy / variance  (texture richness)
-      CNN-proxy  -> Normalised pixel std-dev        (contrast / sharpness)
-      ViT-proxy  -> Local block entropy mean        (structural complexity)
-    """
-    import numpy as np
-    from PIL import Image
-
-    try:
-        # ── Load as greyscale, resize to 128×128 for speed ────────────────
-        img = Image.open(img_path).convert("L").resize((128, 128), Image.BICUBIC)
-        arr = np.array(img, dtype=np.float32) / 255.0      # [0, 1]
-
-        # ── Signal 1 (SVM proxy): HOG-energy variance ──────────────────────
-        # Compute simple gradient magnitudes as a lightweight HOG proxy
-        gy = np.abs(np.diff(arr, axis=0))  # vertical gradients
-        gx = np.abs(np.diff(arr, axis=1))  # horizontal gradients
-        grad_mag = (gy[:, :-1] + gx[:-1, :]) / 2.0
-        hog_energy = float(np.var(grad_mag))
-        # Map variance to [0.50, 0.99] — higher texture variance → higher confidence
-        conf_svm = round(0.50 + min(hog_energy * 80.0, 0.49), 4)
-
-        # ── Signal 2 (CNN proxy): normalised global std-dev ─────────────────
-        std_dev = float(np.std(arr))
-        # Images with rich contrast (std ~0.2-0.4) are clearer → higher confidence
-        # Very uniform (std≈0) or overexposed (std≈0.5+) score lower
-        peak = 0.25   # expected std for a well-exposed image
-        raw_cnn = 1.0 - abs(std_dev - peak) / peak
-        conf_cnn = round(max(0.50, min(raw_cnn * 0.49 + 0.50, 0.99)), 4)
-
-        # ── Signal 3 (ViT proxy): mean local block entropy ─────────────────
-        block = 16
-        entropies = []
-        for r in range(0, 128 - block + 1, block):
-            for c in range(0, 128 - block + 1, block):
-                patch = arr[r:r + block, c:c + block].ravel()
-                # Histogram-based entropy on 16 bins
-                hist, _ = np.histogram(patch, bins=16, range=(0, 1))
-                hist = hist[hist > 0].astype(np.float32)
-                hist /= hist.sum()
-                entropies.append(-float(np.sum(hist * np.log2(hist))))
-        mean_entropy = float(np.mean(entropies)) if entropies else 2.0
-        # Max possible entropy with 16 bins ≈ 4.0; good images usually 2.5-3.5
-        conf_vit = round(0.50 + min(mean_entropy / 8.0, 0.49), 4)
-
-        # ── Ensemble decision ──────────────────────────────────────────────
-        avg_conf = (conf_svm + conf_cnn + conf_vit) / 3.0
-        # Heuristic: high contrast + high texture → Good; flat / very noisy → Damaged
-        prediction = "Good" if avg_conf >= 0.65 else "Damaged"
-
-        return prediction, conf_svm, conf_cnn, conf_vit
-
-    except Exception as exc:
-        print(f"[WARN] _image_derived_confidence failed for {img_path.name}: {exc}")
-        # Last resort: fixed mid-range values so at least the numbers are not random
-        return "Good", 0.72, 0.68, 0.70
-
-
-def _mock_classify(img_path: Path) -> dict:
-    """
-    Fallback classifier used when no trained model is available.
-    Produces confidence values derived from real image features
-    (texture energy, contrast, local entropy) - NOT random numbers.
-    """
-    prediction, conf_svm, conf_cnn, conf_vit = _image_derived_confidence(img_path)
-
-    # Each "model" gets its own image-derived score
-    # All three agree with the ensemble prediction for consistency
-    pred_svm = pred_cnn = pred_vit = prediction
-    avg_conf = round((conf_svm + conf_cnn + conf_vit) / 3.0, 4)
-
-    return {
-        "prediction": prediction,
-        "confidence": avg_conf,
-        "models": {
-            "svm": {"prediction": pred_svm, "confidence": conf_svm},
-            "cnn": {"prediction": pred_cnn, "confidence": conf_cnn},
-            "vit": {"prediction": pred_vit, "confidence": conf_vit},
-        }
-    }
 
 
 @app.post("/classify")
 def classify_all(request: Request):
     """
     Run classification on every uploaded image and store results.
-    - If a trained model exists  -> uses HOG+SVM (real predictions).
-    - If no model is trained yet -> falls back to random mock labels so
-      newly uploaded images always appear in the Results tab.
+    - Requires trained models (uses augmentation + ensemble voting).
+    - If no model is trained yet, raises HTTP 400 error.
+
+    Images are grouped by their prefix (before "___"). For grouped images, the
+    consensus rule applies: if ANY image in a group is classified as Damaged,
+    ALL images in that group are marked as Damaged. Only if ALL images are 
+    classified as Good will the entire group be considered Good.
 
     If the caller is authenticated, each newly-classified image is recorded
     under that user's account so they can review their own processing history.
@@ -365,6 +279,12 @@ def classify_all(request: Request):
         raise HTTPException(status_code=400, detail="No uploaded images to classify.")
 
     use_model = load_models()
+    if not use_model:
+        raise HTTPException(
+            status_code=400,
+            detail="Ensemble models are not trained yet. Please go to the Admin page and click 'Retrain Model' first."
+        )
+
     # Optional attribution: the user who triggered the run (None if anon).
     actor = current_user(request)
     actor_id = actor["id"] if actor else None
@@ -372,50 +292,108 @@ def classify_all(request: Request):
 
     existing = {r["filename"]: r for r in read_results()}
 
-    new_results = []
-    for img_path in sorted(files):
+    # Group images by their group_id (prefix before "___")
+    groups = {}
+    for img_path in files:
         if img_path.name in existing:
-            new_results.append(existing[img_path.name])
-            continue
+            continue  # Skip already-classified images
+        group_id = parse_group_id(img_path.name)
+        if group_id is None:
+            group_id = img_path.name  # No group, use filename as group_id
+        if group_id not in groups:
+            groups[group_id] = []
+        groups[group_id].append(img_path)
 
-        group_id = None
-        if "___" in img_path.name:
-            group_id = img_path.name.split("___", 1)[0]
+    new_results = []
+    
+    # Process each group with consensus voting
+    for group_id, group_files in groups.items():
+        # Get group_id for result entries
+        actual_group_id = None if len(group_files) == 1 and "___" not in group_files[0].name else group_id
+        
+        if len(group_files) == 1:
+            # Single image with no group prefix - classify individually
+            img_path = group_files[0]
+            result = classify_image(img_path)
+            
+            entry = {
+                "id":         f"OPY-{uuid.uuid4().hex[:6].upper()}",
+                "filename":   img_path.name,
+                "timestamp":  datetime.now(timezone.utc).isoformat(),
+                "prediction": result["prediction"],
+                "confidence": result["confidence"],
+                "models": result.get("models", {}),
+                "thumbnail":  True,
+                "group_id":   actual_group_id,
+                "heatmap": result.get("heatmap"),
+            }
+            new_results.append(entry)
 
-        result = classify_image(img_path) if use_model else _mock_classify(img_path)
-        entry = {
-            "id":         f"OPY-{uuid.uuid4().hex[:6].upper()}",
-            "filename":   img_path.name,
-            "timestamp":  datetime.now(timezone.utc).isoformat(),
-            "prediction": result["prediction"],
-            "confidence": result["confidence"],
-            "models": result.get("models", {}),
-            "thumbnail":  True,
-            "group_id":   group_id,
-            "heatmap": result.get("heatmap"),
-        }
-        new_results.append(entry)
+            # Attribute the freshly-processed image to the logged-in user.
+            if actor_id is not None:
+                record_process(
+                    actor_id, actor_email,
+                    img_path.name, result["prediction"], result["confidence"],
+                    datetime.now(timezone.utc).isoformat(),
+                )
+        else:
+            # Multiple images in a group - use consensus rule
+            results = classify_group_with_consensus(group_files)
+            
+            for i, (img_path, result) in enumerate(zip(group_files, results)):
+                entry = {
+                    "id":         f"OPY-{uuid.uuid4().hex[:6].upper()}",
+                    "filename":   img_path.name,
+                    "timestamp":  datetime.now(timezone.utc).isoformat(),
+                    "prediction": result["prediction"],
+                    "confidence": result["confidence"],
+                    "models": result.get("models", {}),
+                    "thumbnail":  True,
+                    "group_id":   actual_group_id,
+                    "heatmap": result.get("heatmap"),
+                }
+                new_results.append(entry)
 
-        # Attribute the freshly-processed image to the logged-in user.
-        if actor_id is not None:
-            record_process(
-                actor_id, actor_email,
-                img_path.name, result["prediction"], result["confidence"],
-                datetime.now(timezone.utc).isoformat(),
-            )
+                # Attribute the freshly-processed image to the logged-in user.
+                if actor_id is not None:
+                    record_process(
+                        actor_id, actor_email,
+                        img_path.name, result["prediction"], result["confidence"],
+                        datetime.now(timezone.utc).isoformat(),
+                    )
 
-    write_results(new_results)
-    mode = "model" if use_model else "mock (no trained model)"
+    # Add any previously classified images back to results (that still exist on disk)
+    existing_results = [r for r in read_results() if r["filename"] in existing]
+    # Combine: previously stored results + newly classified results
+    all_results = existing_results + new_results
+    write_results(all_results)
+    
     return {
-        "message": f"Classified {len(new_results)} image(s) using {mode}",
+        "message": f"Classified {len(new_results)} new image(s) using model",
         "count": len(new_results),
-        "mode": "model" if use_model else "mock",
+        "mode": "model",
     }
-
 
 @app.get("/results")
 def get_results():
-    """Return all classification results, automatically cleaning up any missing files."""
+    """Return all classification results, automatically cleaning up any missing files.
+    
+    If the uploads folder is completely empty, results.json is also reset to []
+    so every page reflects a clean state.
+    """
+    # If the uploads folder is empty, wipe results entirely so all pages stay in sync.
+    VALID_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif"}
+    upload_files = [
+        f for f in UPLOADS_DIR.iterdir()
+        if f.is_file() and f.suffix.lower() in VALID_EXTS
+        and not f.name.endswith("__heatmap.png")
+    ] if UPLOADS_DIR.exists() else []
+
+    if not upload_files:
+        # Uploads folder is empty - clear results to ensure clean state
+        write_results([])
+        return {"results": []}
+
     results = read_results()
     valid_results = []
     changed = False
@@ -516,16 +494,157 @@ def delete_upload(filename: str):
     return {"message": f"Deleted {safe}"}
 
 
+def _sync_corrected_to_db():
+    """
+    Copy corrected images to DB folders if they're in uploads but not in DB.
+    Returns (good_count, damaged_count, copied_count).
+    """
+    if not RAW_GOOD_DIR.exists() and not RAW_DAMAGED_DIR.exists():
+        return 0, 0, 0
+    
+    good_files = set(RAW_GOOD_DIR.glob("*.png")) if RAW_GOOD_DIR.exists() else set()
+    good_files |= set(RAW_GOOD_DIR.glob("*.jpg")) if RAW_GOOD_DIR.exists() else set()
+    good_files |= set(RAW_GOOD_DIR.glob("*.jpeg")) if RAW_GOOD_DIR.exists() else set()
+    good_files |= set(RAW_GOOD_DIR.glob("*.bmp")) if RAW_GOOD_DIR.exists() else set()
+    
+    damaged_files = set(RAW_DAMAGED_DIR.glob("*.png")) if RAW_DAMAGED_DIR.exists() else set()
+    damaged_files |= set(RAW_DAMAGED_DIR.glob("*.jpg")) if RAW_DAMAGED_DIR.exists() else set()
+    damaged_files |= set(RAW_DAMAGED_DIR.glob("*.jpeg")) if RAW_DAMAGED_DIR.exists() else set()
+    damaged_files |= set(RAW_DAMAGED_DIR.glob("*.bmp")) if RAW_DAMAGED_DIR.exists() else set()
+    
+    db_files = good_files | damaged_files
+    
+    copied = 0
+    for r in read_results():
+        filename = r["filename"]
+        if filename in [f.name for f in db_files]:
+            continue  # Already in DB
+        
+        src = UPLOADS_DIR / filename
+        if not src.exists():
+            continue
+        
+        # Determine destination based on prediction
+        prediction = r.get("prediction", "Good")
+        dest_dir = RAW_GOOD_DIR if prediction == "Good" else RAW_DAMAGED_DIR
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / filename
+        
+        try:
+            shutil.copy2(src, dest)
+            copied += 1
+            if prediction == "Good":
+                good_files.add(dest)
+            else:
+                damaged_files.add(dest)
+            print(f"[INFO] Copied {filename} to {prediction} folder")
+        except Exception as e:
+            print(f"[WARN] Failed to copy {filename}: {e}")
+    
+    # Count files in DB (all formats)
+    n_good = len(good_files)
+    n_damaged = len(damaged_files)
+    
+    return n_good, n_damaged, copied
+
+
 @app.post("/train")
 def train_model(user: dict = Depends(require_admin_access)):
-    """Train/retrain the classifier using the DB images."""
+    """
+    Train/retrain the classifier using the DB images.
+    
+    Steps:
+    1. Sync corrected images to DB folders
+    2. Retrain the model with all DB images via augment_and_train.py
+    3. Return success/failure notification
+    """
+    import traceback
+    import subprocess
+    import sys
+    
+    # Step 1: Sync any corrected images to DB
+    n_good, n_damaged, copied = _sync_corrected_to_db()
+    print(f"[INFO] DB status: {n_good} Good, {n_damaged} Damaged, {copied} files synced to DB")
+    
+    # Step 2: Retrain
     try:
-        stats = train_and_evaluate()
-        return {"message": "Training complete", "stats": stats}
+        script_path = str(BASE_DIR / "augment_and_train.py")
+        
+        # Run the training script
+        result = subprocess.run(
+            [sys.executable, script_path],
+            cwd=str(BASE_DIR),
+            capture_output=True,
+            text=True,
+            timeout=600  # 10 minute timeout
+        )
+        
+        if result.returncode != 0:
+            error_msg = result.stderr or result.stdout
+            if "[ERROR] Training failed:" in result.stdout:
+                err_line = [line for line in result.stdout.splitlines() if "[ERROR] Training failed:" in line]
+                err_text = err_line[0].replace("[ERROR] Training failed:", "").strip() if err_line else error_msg
+                raise ValueError(err_text)
+            else:
+                raise RuntimeError(f"Training script failed (exit code {result.returncode}):\n{error_msg}")
+        
+        if not STATS_PATH.exists():
+            raise FileNotFoundError("Stats file not generated by training script.")
+            
+        stats = json.loads(STATS_PATH.read_text())
+        
+        # Reload models in memory cache for FastAPI
+        load_models()
+        
+        # Step 3: Return success with detailed notification
+        response = {
+            "success": True,
+            "message": "Model training completed successfully",
+            "details": {
+                "images_in_db": {
+                    "good": n_good,
+                    "damaged": n_damaged,
+                    "total": n_good + n_damaged
+                },
+                "files_synced": copied,
+                "model_stats": stats
+            }
+        }
+        return response
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        # Validation error (e.g., not enough images)
+        return {
+            "success": False,
+            "message": f"Training failed: {str(e)}",
+            "details": {
+                "images_in_db": {
+                    "good": n_good,
+                    "damaged": n_damaged,
+                    "total": n_good + n_damaged
+                },
+                "files_synced": copied,
+                "error": "validation_error"
+            }
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Unexpected error
+        error_details = traceback.format_exc()
+        print(f"[ERROR] Training failed: {e}")
+        print(error_details)
+        return {
+            "success": False,
+            "message": f"Training failed with unexpected error: {str(e)}",
+            "details": {
+                "images_in_db": {
+                    "good": n_good,
+                    "damaged": n_damaged,
+                    "total": n_good + n_damaged
+                },
+                "files_synced": copied,
+                "error": "unexpected_error",
+                "error_details": error_details[:1000]  # Truncate for safety
+            }
+        }
 
 
 @app.get("/model-stats")
@@ -539,6 +658,11 @@ def model_stats():
 class CorrectionRequest(BaseModel):
     filename: str
     corrected_label: str
+
+class SyncAndTrainRequest(BaseModel):
+    filename: str
+    corrected_label: str
+    run_training: bool = True  # Whether to run the augmentation training script
 
 
 @app.post("/correct-prediction")
@@ -555,9 +679,9 @@ def correct_prediction(req: CorrectionRequest, user: dict = Depends(require_admi
 
     # 2. Get destination directory
     if req.corrected_label == "Good":
-        dest_dir = GOOD_DIR
+        dest_dir = RAW_GOOD_DIR
     elif req.corrected_label == "Damaged":
-        dest_dir = DAMAGED_DIR
+        dest_dir = RAW_DAMAGED_DIR
     else:
         raise HTTPException(status_code=400, detail="Invalid corrected label. Must be 'Good' or 'Damaged'.")
 
@@ -602,9 +726,311 @@ def correct_prediction(req: CorrectionRequest, user: dict = Depends(require_admi
 @app.get("/upload-stats")
 def get_upload_stats():
     """Return count of uploaded files and stats details."""
-    files = [f for f in UPLOADS_DIR.iterdir() if f.is_file() and f.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp"}]
+    files = [f for f in UPLOADS_DIR.iterdir() if f.is_file() and f.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp"}] if UPLOADS_DIR.exists() else []
+    
+    if not files:
+        write_results([])
+        return {
+            "total_uploaded": 0,
+            "total_classified": 0
+        }
+        
     results = read_results()
     return {
         "total_uploaded": len(files),
         "total_classified": len(results)
     }
+
+
+# ── DB Sync & Training Endpoint ──────────────────────────────────────────────────
+@app.post("/sync-and-train")
+def sync_and_train(req: SyncAndTrainRequest, user: dict = Depends(require_admin_access)):
+    """
+    Sync a corrected image to the DB folder and optionally run the augmentation training script.
+    
+    Steps:
+    1. Copy the image from uploads to DB/Good or DB/Damaged based on corrected_label
+       (If file not in uploads, create a placeholder entry - the correction still applies to results)
+    2. Update the results.json with the corrected classification
+    3. If run_training is True, run the augment_train.sh script
+    
+    Returns the training results if training was run, or just the sync status.
+    """
+    import subprocess
+    import traceback
+    
+    # Step 1: Try to find the file in uploads
+    src_file = UPLOADS_DIR / req.filename
+    file_found_in_uploads = src_file.exists()
+    
+    # Step 2: Determine destination directory
+    if req.corrected_label == "Good":
+        dest_dir = RAW_GOOD_DIR
+    elif req.corrected_label == "Damaged":
+        dest_dir = RAW_DAMAGED_DIR
+    else:
+        raise HTTPException(status_code=400, detail="Invalid corrected label. Must be 'Good' or 'Damaged'.")
+    
+    # Step 3: Ensure destination directory exists and copy file if found
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_file = dest_dir / req.filename
+    
+    if file_found_in_uploads:
+        try:
+            shutil.copy2(src_file, dest_file)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to copy file to DB: {str(e)}")
+    else:
+        # File not in uploads - we still allow the correction to be recorded in results
+        # This handles the case where uploads were cleared but user wants to correct past results
+        print(f"[INFO] File {req.filename} not found in uploads, but correction will be recorded in results")
+    
+    # Step 4: Update results.json
+    results = read_results()
+    updated = False
+    for r in results:
+        if r["filename"] == req.filename:
+            r["prediction"] = req.corrected_label
+            r["confidence"] = 1.0
+            r["corrected"] = True
+            updated = True
+            break
+    
+    if not updated:
+        entry = {
+            "id": f"OPY-{uuid.uuid4().hex[:6].upper()}",
+            "filename": req.filename,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "prediction": req.corrected_label,
+            "confidence": 1.0,
+            "thumbnail": True,
+            "corrected": True
+        }
+        results.append(entry)
+    
+    write_results(results)
+    
+    # Step 5: Run training script if requested
+    training_result = None
+    if req.run_training:
+        try:
+            # Get the project root directory
+            import sys
+            script_path = str(BASE_DIR / "augment_and_train.py")
+            
+            # Run the training script
+            result = subprocess.run(
+                [sys.executable, script_path],
+                cwd=str(BASE_DIR),
+                capture_output=True,
+                text=True,
+                timeout=600  # 10 minute timeout
+            )
+            
+            # Reload models in memory cache for FastAPI on success
+            if result.returncode == 0:
+                load_models()
+                
+            training_result = {
+                "success": result.returncode == 0,
+                "stdout": result.stdout[-5000:] if len(result.stdout) > 5000 else result.stdout,  # Truncate for response
+                "stderr": result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr,
+                "return_code": result.returncode
+            }
+        except subprocess.TimeoutExpired:
+            training_result = {
+                "success": False,
+                "error": "Training script timed out after 10 minutes"
+            }
+        except Exception as e:
+            training_result = {
+                "success": False,
+                "error": str(e),
+                "traceback": traceback.format_exc()[-1000:]
+            }
+    
+    response = {
+        "message": f"Successfully synced {req.filename} to {req.corrected_label} folder" + ("" if file_found_in_uploads else " (file not in uploads, correction recorded in results)"),
+        "filename": req.filename,
+        "destination": str(dest_file),
+        "training": training_result
+    }
+    
+    return response
+
+@app.post("/classify-stream")
+async def classify_stream(request: Request):
+    VALID = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif"}
+    files = [
+        f for f in UPLOADS_DIR.iterdir()
+        if f.is_file() and f.suffix.lower() in VALID
+        and not f.name.endswith("__heatmap.png")
+    ]
+
+    if not files:
+        raise HTTPException(status_code=400, detail="No uploaded images to classify.")
+
+    use_model = load_models()
+    if not use_model:
+        raise HTTPException(
+            status_code=400,
+            detail="Ensemble models are not trained yet. Please go to the Admin page and click 'Retrain Model' first."
+        )
+
+    actor = current_user(request)
+    actor_id = actor["id"] if actor else None
+    actor_email = actor["email"] if actor else None
+
+    existing = {r["filename"]: r for r in read_results()}
+
+    groups = {}
+    for img_path in files:
+        if img_path.name in existing:
+            continue
+        group_id = parse_group_id(img_path.name)
+        if group_id is None:
+            group_id = img_path.name
+        if group_id not in groups:
+            groups[group_id] = []
+        groups[group_id].append(img_path)
+
+    async def event_generator():
+        new_results = []
+        total_groups = len(groups)
+        processed_groups = 0
+
+        for group_id, group_files in groups.items():
+            # Yield progress BEFORE processing
+            yield json.dumps({
+                "type": "progress",
+                "progress": processed_groups,
+                "total": total_groups,
+                "current": group_files[0].name if len(group_files) == 1 else f"Group: {group_id}"
+            }) + "\n"
+            await asyncio.sleep(0)
+
+            actual_group_id = None if len(group_files) == 1 and "___" not in group_files[0].name else group_id
+            
+            if len(group_files) == 1:
+                img_path = group_files[0]
+                result = await asyncio.to_thread(classify_image, img_path)
+                
+                entry = {
+                    "id":         f"OPY-{uuid.uuid4().hex[:6].upper()}",
+                    "filename":   img_path.name,
+                    "timestamp":  datetime.now(timezone.utc).isoformat(),
+                    "prediction": result["prediction"],
+                    "confidence": result["confidence"],
+                    "models": result.get("models", {}),
+                    "thumbnail":  True,
+                    "group_id":   actual_group_id,
+                    "heatmap": result.get("heatmap"),
+                }
+                new_results.append(entry)
+
+                if actor_id is not None:
+                    await asyncio.to_thread(record_process, actor_id, actor_email, img_path.name, result["prediction"], result["confidence"], datetime.now(timezone.utc).isoformat())
+            else:
+                results = await asyncio.to_thread(classify_group_with_consensus, group_files)
+                for i, (img_path, result) in enumerate(zip(group_files, results)):
+                    entry = {
+                        "id":         f"OPY-{uuid.uuid4().hex[:6].upper()}",
+                        "filename":   img_path.name,
+                        "timestamp":  datetime.now(timezone.utc).isoformat(),
+                        "prediction": result["prediction"],
+                        "confidence": result["confidence"],
+                        "models": result.get("models", {}),
+                        "thumbnail":  True,
+                        "group_id":   actual_group_id,
+                        "heatmap": result.get("heatmap"),
+                    }
+                    new_results.append(entry)
+                    if actor_id is not None:
+                        await asyncio.to_thread(record_process, actor_id, actor_email, img_path.name, result["prediction"], result["confidence"], datetime.now(timezone.utc).isoformat())
+            
+            processed_groups += 1
+            # Yield progress AFTER processing
+            yield json.dumps({
+                "type": "progress",
+                "progress": processed_groups,
+                "total": total_groups,
+                "current": "Done"
+            }) + "\n"
+            await asyncio.sleep(0)
+
+        existing_results = [r for r in read_results() if r["filename"] in existing]
+        all_results = existing_results + new_results
+        await asyncio.to_thread(write_results, all_results)
+        
+        yield json.dumps({
+            "type": "result",
+            "message": f"Classified {len(new_results)} new image(s) using model",
+            "count": len(new_results),
+            "mode": "model"
+        }) + "\n"
+
+    return StreamingResponse(event_generator(), media_type="application/x-ndjson")
+
+@app.post("/train-stream")
+async def train_stream(user: dict = Depends(require_admin_access)):
+    import sys
+    import subprocess
+    import asyncio
+    
+    # Sync corrected images before we start the subprocess stream
+    n_good, n_damaged, copied = _sync_corrected_to_db()
+    
+    async def event_generator():
+        # Let frontend know we synced files
+        yield json.dumps({
+            "type": "log",
+            "message": f"[INFO] DB status: {n_good} Good, {n_damaged} Damaged, {copied} files synced to DB"
+        }) + "\n"
+        await asyncio.sleep(0)
+        
+        script_path = str(BASE_DIR / "augment_and_train.py")
+        
+        # Use standard Popen and to_thread to avoid NotImplementedError on Windows SelectorEventLoop
+        # Pass -u to Python so stdout is unbuffered and streams live to the frontend
+        process = subprocess.Popen(
+            [sys.executable, "-u", script_path],
+            cwd=str(BASE_DIR),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+        
+        while True:
+            line = await asyncio.to_thread(process.stdout.readline)
+            if not line:
+                break
+            text = line.rstrip()
+            yield json.dumps({
+                "type": "log",
+                "message": text
+            }) + "\n"
+            
+        await asyncio.to_thread(process.wait)
+        
+        if process.returncode == 0:
+            # reload models
+            await asyncio.to_thread(load_models)
+            stats = {}
+            if STATS_PATH.exists():
+                stats = json.loads(STATS_PATH.read_text())
+                
+            yield json.dumps({
+                "type": "result",
+                "success": True,
+                "message": "Model training completed successfully",
+                "stats": stats
+            }) + "\n"
+        else:
+            yield json.dumps({
+                "type": "result",
+                "success": False,
+                "message": f"Training failed with exit code {process.returncode}"
+            }) + "\n"
+
+    return StreamingResponse(event_generator(), media_type="application/x-ndjson")
