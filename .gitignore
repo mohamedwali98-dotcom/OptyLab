@@ -54,11 +54,12 @@ lerna-debug.log*
 *.sw?
 *.zip
 
-# Local environment / secrets
+# Local environment / secrets / transient data
 .env
 .jwt_secret
 *.db
 uploads/
+heatmaps/
 results.json
 
 *.pth
