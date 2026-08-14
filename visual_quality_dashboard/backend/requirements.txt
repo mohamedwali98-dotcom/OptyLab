@@ -9,5 +9,5 @@ joblib
 opencv-python-headless
 torch
 torchvision
-transformers
+scipy
 pydantic

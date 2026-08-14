@@ -1,21 +1,6 @@
 # OptyLab - Visual Quality Dashboard
 
-OptyLab is a high-precision computer vision pipeline and full-stack dashboard designed to detect defects and verify the quality of manufactured eye lenses.
-
-## Architecture
-
-OptyLab uses a **3-Model Voting Ensemble** to maximize accuracy and precision on fine details.
-
-### 1. The Ensemble Models
-- **SVM (Support Vector Machine):** Extracts Histogram of Oriented Gradients (HOG) features from the images to detect edge and texture anomalies.
-- **CNN (ResNet18):** A deep Convolutional Neural Network pretrained on ImageNet, fine-tuned to extract hierarchical spatial features.
-- **ViT (Vision Transformer):** A state-of-the-art transformer architecture (`torchvision.models.vit_b_16`) that models global image context using self-attention mechanisms.
-
-### 2. High Precision Processing
-Because eye lenses require extreme precision, all models are fed high-resolution images (`256x256`) using **Bicubic Interpolation**. This preserves fine edges and details that standard bilinear resizing would blur.
-
-### 3. Majority Voting
-During inference, the image is passed through all three models independently. A final prediction is made using a majority vote (e.g., if CNN and ViT say "Good" but SVM says "Damaged", the system outputs "Good").
+OptyLab is a high-precision computer vision pipeline and full-stack dashboard designed to detect defects and verify the quality of manufactured eye lenses using a **3-Model Voting Ensemble** (SVM + CNN ResNet18 + ViT).
 
 ## Project Structure
 
@@ -27,90 +12,121 @@ OptyLab/
 │   ├── Damaged/                 # Augmented damaged images
 │   └── Good/                    # Augmented good images
 ├── visual_quality_dashboard/    # Dashboard application
-│   ├── docker/                  # ← Docker shortcuts and multi-container images
-│   │   ├── Dockerfile.augment_train # Training pipeline image
-│   │   ├── Dockerfile.run_all       # Full stack orchestration image
-│   │   ├── augment_train.sh         # Shortcut for training
-│   │   ├── run_all.sh               # Shortcut for full stack
-│   │   ├── nginx.conf               # Nginx configuration
-│   │   └── README.md                # Docker documentation
+│   ├── docker-compose.yml       # Orchestrates Frontend + Backend (2 containers)
+│   ├── run_all.py               # Starts the Docker Compose stack
+│   ├── Dockerfile               # Frontend image (Vite → Nginx)
 │   ├── backend/
-│   │   ├── classifier.py         # Orchestrator for the ensemble model
-│   │   ├── classifier_utils.py   # Shared config, data loaders, and transforms
-│   │   ├── classifier_svm.py     # SVM/HOG implementation
-│   │   ├── classifier_cnn.py     # ResNet18 implementation
-│   │   ├── classifier_vit.py     # Vision Transformer implementation
-│   │   ├── main.py               # FastAPI backend server
-│   │   ├── requirements.txt      # Python dependencies
-│   │   ├── augment_and_train.py  # Data augmentation + training pipeline
-│   │   └── Dockerfile            # Container for the ML backend
-│   ├── src/                      # Vite + React Frontend
-│   ├── docker-compose.yml        # Orchestrates Frontend + Backend
-│   ├── run_all.py                # Local orchestration script
-│   ├── Dockerfile                # Container for the frontend
-│   └── README.md                 # Dashboard documentation (moved to root)
-├── README.md                     # ← This file (project documentation)
-├── .gitignore
-└── package-lock.json
+│   │   ├── main.py              # FastAPI backend server
+│   │   ├── Dockerfile           # Backend image (FastAPI + ML)
+│   │   ├── requirements.txt     # Python dependencies
+│   │   ├── augment_and_train.py # Augment data + train models
+│   │   ├── classifier*.py       # SVM / CNN / ViT ensemble
+│   │   └── ...
+│   └── src/                     # Vite + React Frontend
+└── README.md                    # This file
 ```
 
-## Running the Application
+---
 
-### Using Docker Compose (Recommended)
+## Quick Start (Docker)
 
-Start the entire application stack:
+The app runs as **2 containers** built from `docker-compose.yml`:
+
+| Service | Port | Image |
+|---------|------|-------|
+| Backend (FastAPI + ML) | `http://localhost:8000` | `visual_quality_dashboard-backend` |
+| Frontend (React → Nginx) | `http://localhost:8080` | `visual_quality_dashboard-frontend` |
+
+### Option A — Using `run_all.py` (recommended)
 
 ```bash
-# From the project root (OptyLab directory)
-cd /c/Users/moham/Desktop/OptyLab
+# From the project root
+cd OptyLab
+python visual_quality_dashboard/run_all.py
+```
 
-# Start the full stack using docker-compose
+This builds both Docker images and starts the containers.
+
+### Option B — Using docker-compose directly
+
+```bash
+# From the project root
+cd OptyLab
+
+# Build and start both containers (foreground)
 docker compose -f visual_quality_dashboard/docker-compose.yml up --build
+
+# Or detached (background)
+docker compose -f visual_quality_dashboard/docker-compose.yml up --build -d
+
+# Stop all containers
+docker compose -f visual_quality_dashboard/docker-compose.yml down
 ```
 
-- Frontend: `http://localhost:8080`
-- Backend API: `http://localhost:8000`
+---
 
-### Using Docker Shortcuts
+## Running Locally (Development, no Docker)
 
-**Run training pipeline:**
+Requires **Python 3.14** (backed by `C:/Python314/python.exe`) and **Node.js**.
+
+### 1. Install backend dependencies
+
 ```bash
-cd /c/Users/moham/Desktop/OptyLab
-./visual_quality_dashboard/docker/augment_train.sh
+cd visual_quality_dashboard/backend
+C:/Python314/python.exe -m pip install -r requirements.txt
 ```
 
-**Run full stack (combined image):**
+### 2. Start the backend
+
 ```bash
-cd /c/Users/moham/Desktop/OptyLab
-./visual_quality_dashboard/docker/run_all.sh
+C:/Python314/python.exe -m uvicorn main:app --reload --port 8000
 ```
 
-**Run in detached mode:**
-```bash
-./visual_quality_dashboard/docker/run_all.sh -d
-```
-
-### Running Locally (Development)
+### 3. Start the frontend (separate terminal)
 
 ```bash
 cd visual_quality_dashboard
+npm install
 npm run dev
 ```
 
-*(Make sure you have Node.js and Python installed)*
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8000`
 
-## Training with Docker
+---
 
-Run the augment_and_train pipeline to augment data and retrain models:
+## Augment Data & Train Models
+
+### Option A — Via `augment_and_train.py` (Python)
 
 ```bash
-# Run with default augmentation count (10)
-cd /c/Users/moham/Desktop/OptyLab
-./visual_quality_dashboard/docker/augment_train.sh
+# From the project root
+C:/Python314/python.exe visual_quality_dashboard/backend/augment_and_train.py
 
-# Run with custom augmentation count (15 copies per image)
-AUG_PER_IMAGE=15 ./visual_quality_dashboard/docker/augment_train.sh
+# Custom number of augmented copies per image (default: 10)
+AUG_PER_IMAGE=15 C:/Python314/python.exe visual_quality_dashboard/backend/augment_and_train.py
 ```
+
+### Option B — Via Docker
+
+```bash
+# From the project root
+cd OptyLab
+
+# Build the training image (once)
+docker build -t optylab/augment_train -f visual_quality_dashboard/docker/Dockerfile.augment_train .
+
+# Run the augment + train pipeline
+docker run --rm \
+  -e AUG_PER_IMAGE=10 \
+  -v "$(pwd)/DB:/app/DB" \
+  -v "$(pwd)/visual_quality_dashboard/backend/model:/app/model" \
+  optylab/augment_train
+```
+
+**Note:** This Docker image is separate from the 2 application containers — it is only used for the training pipeline.
+
+---
 
 ## API Endpoints
 
@@ -124,49 +140,13 @@ AUG_PER_IMAGE=15 ./visual_quality_dashboard/docker/augment_train.sh
 - `POST /auth/register` - Register a new user account.
 - `POST /auth/login` - Login with email and password.
 
-## Docker Commands
-
-```bash
-# Build images
-cd /c/Users/moham/Desktop/OptyLab
-docker build -t optylab/augment_train -f visual_quality_dashboard/docker/Dockerfile.augment_train .
-docker build -t optylab/run_all -f visual_quality_dashboard/docker/Dockerfile.run_all .
-
-# Start services
-docker compose -f visual_quality_dashboard/docker-compose.yml up
-./visual_quality_dashboard/docker/run_all.sh -d
-
-# View logs
-docker logs -f optylab_backend
-docker logs -f optylab_run_all
-
-# Stop services
-docker compose -f visual_quality_dashboard/docker-compose.yml down
-docker stop optylab_run_all
-```
+---
 
 ## Data Volumes
-
-Docker volumes for persisting data:
 
 | Host Path | Container Path | Purpose |
 |-----------|----------------|---------|
 | `OptyLab/DB/` | `/app/DB` | Image database (Good/Damaged/RawImagesGood/RawImagesDamaged) |
-| `visual_quality_dashboard/backend/model/` | `/app/model` | Trained model weights (.pth, .pkl files, stats.json) |
+| `visual_quality_dashboard/backend/model/` | `/app/model` | Trained model weights (.pth, .pkl, stats.json) |
 
-## Development
-
-```bash
-# Rebuild images
-docker build --no-cache -t optylab/augment_train -f visual_quality_dashboard/docker/Dockerfile.augment_train .
-docker build --no-cache -t optylab/run_all -f visual_quality_dashboard/docker/Dockerfile.run_all .
-
-# Clean up
-docker image prune -f
-docker container prune -f
-```
-
-## Note
-
-- This README is the main project documentation.
-- For Docker-specific documentation, see `visual_quality_dashboard/docker/README.md`.
+These are mounted as volumes — they are **not** inside the Docker images. Copy them along with your project when moving to another machine.
