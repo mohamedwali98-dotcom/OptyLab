@@ -63,3 +63,15 @@ heatmaps/
 results.json
 
 *.pth
+
+# WhatsApp images
+WhatsApp Image*
+
+# Dataset images (binary data)
+DB/
+
+# Model binaries (large files)
+visual_quality_dashboard/backend/model/*.pkl
+visual_quality_dashboard/backend/model/*.h5
+visual_quality_dashboard/backend/model/*.keras
+
