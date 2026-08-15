@@ -9,11 +9,17 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Persist the training DB and trained model weights outside the container
-      - ./DB:/app/DB
-      - ./models:/app/models
+      # Persist the training DB and trained model weights outside the container.
+      # DB/ lives at the repo root (one level above this compose file), not
+      # inside visual_quality_dashboard/ — and the code's model dir is
+      # singular ("model"), so both paths below must match exactly or the
+      # container trains/serves against an empty, disconnected copy.
+      - ../DB:/app/DB
+      - ./backend/model:/app/model
     environment:
       - PYTHONUNBUFFERED=1
+      - OPTYLAB_DB_DIR=/app/DB
+      - OPTYLAB_MODEL_DIR=/app/model
     restart: unless-stopped
     container_name: optylab_backend
     healthcheck:

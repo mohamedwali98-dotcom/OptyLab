@@ -2,6 +2,11 @@
 
 This directory contains Docker setup files and shortcuts for running OptyLab components.
 
+> **Note:** `visual_quality_dashboard/run_all.py` is now **local-first** (no
+> Docker, no build) by default — pass `--docker` to use the Compose stack
+> described below instead. See the root `README.md` for the full local vs.
+> Docker workflow.
+
 ## Directory Structure
 
 ```

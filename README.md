@@ -13,7 +13,7 @@ OptyLab/
 │   └── Good/                    # Augmented good images
 ├── visual_quality_dashboard/    # Dashboard application
 │   ├── docker-compose.yml       # Orchestrates Frontend + Backend (2 containers)
-│   ├── run_all.py               # Starts the Docker Compose stack
+│   ├── run_all.py               # Launcher: local by default, --docker to containerize
 │   ├── Dockerfile               # Frontend image (Vite → Nginx)
 │   ├── backend/
 │   │   ├── main.py              # FastAPI backend server
@@ -28,16 +28,10 @@ OptyLab/
 
 ---
 
-## Quick Start (Docker)
+## Quick Start (Local — recommended)
 
-The app runs as **2 containers** built from `docker-compose.yml`:
-
-| Service | Port | Image |
-|---------|------|-------|
-| Backend (FastAPI + ML) | `http://localhost:8000` | `visual_quality_dashboard-backend` |
-| Frontend (React → Nginx) | `http://localhost:8080` | `visual_quality_dashboard-frontend` |
-
-### Option A — Using `run_all.py` (recommended)
+One command starts both the backend and frontend as local processes — **no
+Docker required, nothing gets built**:
 
 ```bash
 # From the project root
@@ -45,69 +39,118 @@ cd OptyLab
 python visual_quality_dashboard/run_all.py
 ```
 
-This builds both Docker images and starts the containers.
+- Backend: `http://localhost:8000`
+- Frontend: `http://localhost:5173`
 
-### Option B — Using docker-compose directly
+The first run installs frontend packages automatically (`npm install`) if
+`node_modules/` isn't present yet. Backend Python dependencies are **not**
+auto-installed (they're heavy — torch, torchvision) — if `uvicorn` isn't
+importable yet, the script tells you the exact command to run:
 
 ```bash
-# From the project root
-cd OptyLab
-
-# Build and start both containers (foreground)
-docker compose -f visual_quality_dashboard/docker-compose.yml up --build
-
-# Or detached (background)
-docker compose -f visual_quality_dashboard/docker-compose.yml up --build -d
-
-# Stop all containers
-docker compose -f visual_quality_dashboard/docker-compose.yml down
+python -m pip install -r visual_quality_dashboard/backend/requirements.txt
 ```
 
----
+Requires Python 3.10+ (the codebase uses `X | None` type syntax) and Node.js.
+Press `Ctrl+C` to stop both processes.
 
-## Running Locally (Development, no Docker)
+### Flags
 
-Requires **Python 3.14** (backed by `C:/Python314/python.exe`) and **Node.js**.
+| Command | What it does |
+|---|---|
+| `python visual_quality_dashboard/run_all.py` | Local backend + frontend (default) |
+| `python visual_quality_dashboard/run_all.py --train` | Runs `augment_and_train.py` first, then serves locally |
+| `python visual_quality_dashboard/run_all.py --docker` | Serves via `docker compose up` instead (builds only if images are missing) |
+| `python visual_quality_dashboard/run_all.py --docker --build` | Docker, forcing an image rebuild |
 
-### 1. Install backend dependencies
+### Running backend/frontend manually (equivalent to the local default)
 
 ```bash
+# Terminal 1 — backend
 cd visual_quality_dashboard/backend
-C:/Python314/python.exe -m pip install -r requirements.txt
-```
+python -m pip install -r requirements.txt
+python -m uvicorn main:app --reload --port 8000
 
-### 2. Start the backend
-
-```bash
-C:/Python314/python.exe -m uvicorn main:app --reload --port 8000
-```
-
-### 3. Start the frontend (separate terminal)
-
-```bash
+# Terminal 2 — frontend
 cd visual_quality_dashboard
 npm install
 npm run dev
 ```
 
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:8000`
+---
+
+## Docker (optional)
+
+The app can also run as **2 containers** via `docker-compose.yml`. Use this
+if you don't want Python/Node installed locally, or want an isolated
+environment.
+
+| Service | Port | Image |
+|---------|------|-------|
+| Backend (FastAPI + ML) | `http://localhost:8000` | `visual_quality_dashboard-backend` |
+| Frontend (React → Nginx) | `http://localhost:8080` | `visual_quality_dashboard-frontend` |
+
+### Option A — `run_all.py --docker`
+
+```bash
+# From the project root
+cd OptyLab
+python visual_quality_dashboard/run_all.py --docker         # build only if images are missing
+python visual_quality_dashboard/run_all.py --docker --build # force a rebuild
+```
+
+### Option B — docker compose directly
+
+```bash
+# From the project root
+cd OptyLab
+
+# Start (builds only if images are missing)
+docker compose -f visual_quality_dashboard/docker-compose.yml up
+
+# Force a rebuild
+docker compose -f visual_quality_dashboard/docker-compose.yml up --build
+
+# Detached (background)
+docker compose -f visual_quality_dashboard/docker-compose.yml up -d
+
+# Stop all containers
+docker compose -f visual_quality_dashboard/docker-compose.yml down
+```
+
+**Note:** neither `run_all.py` nor plain `docker compose up` rebuilds images
+on every launch — Compose only builds a service the first time its image is
+missing, or when `--build` is passed. Docker's own layer cache still applies,
+so even an explicit `--build` after a small code change is fast.
 
 ---
 
 ## Augment Data & Train Models
 
-### Option A — Via `augment_and_train.py` (Python)
+Training now holds out a **grouped test split** (by raw source image, so
+augmented copies of one photo never leak across the split) and reports honest
+held-out accuracy/precision/recall/F1 + a confusion matrix in
+`backend/model/stats.json`, instead of scoring each model on its own training
+data.
+
+### Option A — Via `run_all.py --train` (runs then serves)
 
 ```bash
 # From the project root
-C:/Python314/python.exe visual_quality_dashboard/backend/augment_and_train.py
-
-# Custom number of augmented copies per image (default: 10)
-AUG_PER_IMAGE=15 C:/Python314/python.exe visual_quality_dashboard/backend/augment_and_train.py
+python visual_quality_dashboard/run_all.py --train
 ```
 
-### Option B — Via Docker
+### Option B — Via `augment_and_train.py` directly (Python)
+
+```bash
+# From the project root
+python visual_quality_dashboard/backend/augment_and_train.py
+
+# Custom number of augmented copies per image (default: 10)
+AUG_PER_IMAGE=15 python visual_quality_dashboard/backend/augment_and_train.py
+```
+
+### Option C — Via Docker
 
 ```bash
 # From the project root

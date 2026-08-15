@@ -17,13 +17,14 @@ One-shot pipeline for OptyLab:
     DB/Good/ + DB/Damaged/  and saves the updated model files.
 
 Usage (run from the project root OR from backend/):
-    C:/Python314/python.exe visual_quality_dashboard/backend/augment_and_train.py
+    python visual_quality_dashboard/backend/augment_and_train.py
     -- or --
     cd visual_quality_dashboard/backend
-    C:/Python314/python.exe augment_and_train.py
+    python augment_and_train.py
 
-Optional env var:
-    AUG_PER_IMAGE=12   number of augmented copies per raw image (default: 10)
+Optional env vars:
+    AUG_PER_IMAGE=12     number of augmented copies per raw image (default: 10)
+    OPTYLAB_DB_DIR=...   override the DB location (see classifier_utils.py)
 """
 
 import os
@@ -36,12 +37,9 @@ BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-# Paths
-DB_DIR          = BACKEND_DIR.parent.parent / "DB"
-RAW_DAMAGED_DIR = DB_DIR / "RawImagesDamaged"
-RAW_GOOD_DIR    = DB_DIR / "RawImagesGood"
-DAMAGED_DIR     = DB_DIR / "Damaged"
-GOOD_DIR        = DB_DIR / "Good"
+# Paths — sourced from classifier_utils so this script, the trainer, and the
+# server always agree on where the data lives (and honor OPTYLAB_DB_DIR).
+from classifier_utils import DB_DIR, RAW_DAMAGED_DIR, RAW_GOOD_DIR, DAMAGED_DIR, GOOD_DIR
 
 VALID_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif"}
 

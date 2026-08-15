@@ -576,7 +576,7 @@ def train_model(user: dict = Depends(require_admin_access)):
             cwd=str(BASE_DIR),
             capture_output=True,
             text=True,
-            timeout=600  # 10 minute timeout
+            timeout=1800  # 30 minute timeout (CNN/ViT now train more epochs with early stopping)
         )
         
         if result.returncode != 0:
@@ -824,7 +824,7 @@ def sync_and_train(req: SyncAndTrainRequest, user: dict = Depends(require_admin_
                 cwd=str(BASE_DIR),
                 capture_output=True,
                 text=True,
-                timeout=600  # 10 minute timeout
+                timeout=1800  # 30 minute timeout (CNN/ViT now train more epochs with early stopping)
             )
             
             # Reload models in memory cache for FastAPI on success
