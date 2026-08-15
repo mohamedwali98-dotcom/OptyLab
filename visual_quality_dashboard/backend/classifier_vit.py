@@ -3,25 +3,41 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import models
 from PIL import Image
-from sklearn.metrics import accuracy_score
-from classifier_utils import MODEL_DIR, DEVICE, ImageDataset, pytorch_transform, train_pytorch_model, evaluate_pytorch_model
+import numpy as np
+from classifier_utils import (
+    MODEL_DIR, DEVICE, ImageDataset, pytorch_transform, train_transform,
+    train_pytorch_model, proba_pytorch_model, class_weights_for,
+)
 
 MODEL_PATH_VIT = MODEL_DIR / "classifier_vit.pth"
 
-def train_vit(paths, labels):
+def train_vit(paths, labels, val_paths=None, val_labels=None):
+    """Fine-tune ViT-B/16 on the given training split. ViT is far more prone
+    to catastrophic forgetting than the CNN when fully fine-tuned at a high
+    learning rate, so the backbone gets a much lower LR than the head (this
+    is what the old fixed lr=1e-3-for-everything run was under-training at
+    ~68% accuracy). If a validation split is provided, training uses early
+    stopping / best-checkpoint on val loss. Returns the trained model."""
     print("[INFO] Training ViT...")
-    vit_dataset = ImageDataset(paths, labels, transform=pytorch_transform)
-    vit_loader = DataLoader(vit_dataset, batch_size=8, shuffle=True)
-    
+    train_dataset = ImageDataset(paths, labels, transform=train_transform)
+    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
+
+    val_loader = None
+    if val_paths:
+        val_dataset = ImageDataset(val_paths, val_labels, transform=pytorch_transform)
+        val_loader = DataLoader(val_dataset, batch_size=8)
+
     vit_model = models.vit_b_16(weights=models.ViT_B_16_Weights.DEFAULT)
     vit_model.heads.head = nn.Linear(vit_model.heads.head.in_features, 2)
-    
-    train_pytorch_model(vit_model, vit_loader, epochs=2)
+
+    train_pytorch_model(
+        vit_model, train_loader, val_loader=val_loader, epochs=6,
+        head_params=vit_model.heads.head.parameters(),
+        lr_head=1e-3, lr_backbone=1e-5,
+        class_weights=class_weights_for(labels),
+    )
     torch.save(vit_model.state_dict(), MODEL_PATH_VIT)
-    
-    y_vit, y_pred_vit = evaluate_pytorch_model(vit_model, DataLoader(vit_dataset, batch_size=8))
-    acc = accuracy_score(y_vit, y_pred_vit)
-    return acc
+    return vit_model
 
 def load_vit():
     if not MODEL_PATH_VIT.exists():
@@ -32,6 +48,9 @@ def load_vit():
     vit.to(DEVICE)
     vit.eval()
     return vit
+
+def proba_vit(model, paths) -> np.ndarray:
+    return proba_pytorch_model(model, paths)
 
 def predict_vit(model, img_path):
     img_pil = Image.open(img_path).convert("RGB")
